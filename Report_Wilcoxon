@@ -1,0 +1,118 @@
+
+ods escapechar="^";
+
+
+proc format;
+ 
+  value pcolor 0.1 - high = "Red"
+               0.05 -< 0.1 = "Yellow"
+			   low -< 0.05 = "Green"
+			   ;
+  value effcolor -0.5 - 0.5 = "Red"
+                 0.5 <- 0.8 = "Orange"
+				 -0.8 -< -0.5 = "Orange"
+				 0.8 <- 1.5 = "Yellow"
+				 -1.5 -< -0.8 = "Yellow"
+				 1.5 <- 2 = "Lightgreen"
+				 -2 -< -1.5 = "Lightgreen"
+				 2 <- high = "Green"
+				 low -< -2 = "Green"
+                 ;
+run;
+
+
+%macro report_wilcoxon(ds=, title=);
+
+ods rtf anchor="&ds";
+
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]1. Descriptive Statistics of Raw Value}";
+ods proclabel="Descriptive statistics for raw value";
+proc report data=des_&ds contents="" missing split="^";
+  where visitdy ne -7;
+  format visitdy timenum. trtn trtn.;
+  columns trtn visitdy n missing mean std median q1 q3 min max;
+  define trtn / group "Treatment" order=internal style(column)=[just=left];
+  define visitdy / display "Time" style(column)=[just=left];
+  define n / display style(column)=[just=center];
+  define missing / display style(column)=[just=center];
+  define mean / display style(column)=[just=center];
+  define std / display style(column)=[just=center];
+  define median / display style(column)=[just=center];
+  define q1 / display style(column)=[just=center];
+  define q3 / display style(column)=[just=center];
+  define min / display style(column)=[just=center];
+  define max / display style(column)=[just=center];
+  compute after trtn;
+    line "";
+	endcomp;
+title "Descriptive statistics for &title";
+run;
+title;
+
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]2. Box Plot of Raw Value}";
+ods proclabel="Box plot for raw value";
+proc sgplot data=&ds dattrmap=attrmap description="";
+  where visitdy ne -7;
+  format visitdy timenum. trtn trtn.;
+  vbox evstresn / category=visitdy group=trtn medianattrs=(pattern=2 color=black) meanattrs=(symbol=circlefilled color=black size=6)
+                  boxwidth=0.9 whiskerattrs=(pattern=2) attrid=myid1;
+  xaxis label=" " valueattrs=(size=12);
+  yaxis label="Value" labelattrs=(size=12) valueattrs=(size=12) offsetmin=0.1 offsetmax=0.1;
+  keylegend / title="" valueattrs=(size=12) noborder ;
+  title "Box plot for &title";
+run;
+title;
+
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]3. Frequency Table of Raw Value}";
+proc report data=freq2_&ds split="|";
+  format trtn trtn. visitdy timenum.;
+  columns trtn visitdy n ("Frequency (%)" 
+         (_1___Completely_agree _2___Somewhat_agree _3___Neither_agree_nor_disagree _4___Somewhat_disagree _5___Completely_disagree));
+  define trtn / group "Treatment" order=internal style(column)=[just=left];
+  define visitdy / display "Time" style(column)=[just=left];
+  define n / display "N" style(column)=[just=center];
+  define _1___Completely_agree / display "1|Completely agree" style(column)=[just=center];
+  define _2___Somewhat_agree / display "2|Somewhat agree" style(column)=[just=center];
+  define _3___Neither_agree_nor_disagree / display "3|Neither agree nor disagree" style(column)=[just=center];
+  define _4___Somewhat_disagree / display "4|Somewhat disagree" style(column)=[just=center];
+  define _5___Completely_disagree / display "5|Completely disagree" style(column)=[just=center];
+  compute after trtn;
+    line "";
+	endcomp;
+title "Frequency table for &title";
+run;
+title;
+
+
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]4. Stacked Bar Graph of Raw Value}";
+proc sgpanel data=freq_&ds;
+  where visitdy ne -7;
+  format visitdy timenum. trtn trtn.;
+  panelby visitdy / onepanel rows=1 novarname headerattrs=(size=12) headerbackcolor=lightgray;
+  vbar trtn / response=pct_row group=evstresc;
+  keylegend / title="" noborder;
+  rowaxis label="Frequency (%)" labelattrs=(size=9);
+  colaxis label=" " valueattrs=(size=10) fitpolicy=rotate; 
+title "Stacked Bar for &title";
+run;
+title;
+
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]5. Comparison between Treatments}";
+ods proclabel="Comparison between treatments";
+proc report data=wilcoxon_&ds missing split="^";
+  format pvalue pvalue7.4;
+  columns comp pvalue;
+  define comp / display "Comparison" style(column)=[just=left];
+  define pvalue / display "Wilcoxon Rank Sum P-Value" style={background=pcolor. just=center};
+title1 "Comparison between treatments";
+title2 "&title";
+run;
+title;
+
+
+%mend;
