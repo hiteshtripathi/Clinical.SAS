@@ -1,0 +1,146 @@
+/*** clear work library ***/
+proc datasets lib=work memtype=data kill; run;
+
+/*** set datapath, outputpath and project***/
+%let datapath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Data\ACR_SMAD_18-12664_DB_temp_20190820);
+%let outputpath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Outputs);
+%let project=SMAD;
+libname &project "&datapath";
+
+/*** import format if any ***/
+proc format cntlin=&project..formats;
+run;
+
+options fmtsearch=(work &project);
+
+/*
+%let control=;
+%let active=;
+%let trtC=;
+%let trtA=;
+%let BaseTime=;
+*/
+
+proc freq data=&project..eval;
+  tables visitdy*tpt*tptref / missing;
+run;
+
+proc freq data=&project..eval;
+  tables evtest / missing;
+run;
+
+proc sort data=&project..eval;
+  by randoid cat scat evtest visitdy tpt tptref;
+run;
+
+data adeff1;
+  set &project..eval;
+  test=catx("-", put(cat, $cat.), put(scat, $scat.), evtest, evgrpid, "site: "||put(site, site.));
+  time=put(visitdy, timenum.);
+run;
+
+proc sort data=adeff1;
+  by randoid test visitdy;
+run;
+
+proc sort data=&project..dbext_rd;
+  by randoid;
+run;
+
+data adeff;
+  merge adeff1 &project..dbext_rd(keep=randoid rdstresc);
+  by randoid;
+  treatment=rdstresc;
+run;
+
+
+/***********************************************************************************************************/
+ods graphics / noborder height=1400 width=1200;
+
+data attrmap;
+  length value $50 markersymbol $20;
+  input value $1-15 fillcolor $ markersymbol $ markercolor $ linecolor $ linepattern id $;
+datalines;
+Not applicable black circlefilled black black 1 myid1
+Left           blue circlefilled blue blue 1 myid1
+Right          red circlefilled red red 1 myid1
+;
+run;
+
+proc sort data=adeff;
+  by treatment test randoid visitdy;
+run;
+
+
+
+proc freq data=adeff;
+  where scat in ("PRIMOS0", "OCT0");
+  tables evtest*site;
+run;
+
+proc freq data=adeff;
+  where scat in ("PRIMOS0", "OCT0");
+  tables test;
+run;
+
+%macro IndPlot(test=, file=);
+ods proclabel="&file";
+proc sgpanel data=adeff dattrmap=attrmap noautolegend description="Page";
+  where test="&test";
+  *by test;
+  format visitdy timenum.;
+  panelby treatment randoid / headerattrs=(size=8) headerbackcolor=lightgray columns=4 rows=4 novarname;
+  scatter x=visitdy y=evstresn / group=side groupdisplay=cluster clusterwidth=0.8 attrid=myid1 markerattrs=(size=6) name="eff";
+  series x=visitdy y=evstresn / group=side groupdisplay=cluster clusterwidth=0.8 attrid=myid1;
+  colaxis type=discrete discreteorder=data label="Time" labelattrs=(size=10) valueattrs=(size=8);
+  rowaxis label="Value" labelattrs=(size=10);
+  keylegend "eff" / noborder;
+run;
+%mend;
+
+
+ods pdf file="&outputpath\SMAD_IndPlot2_03July2019.pdf";
+
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Dryness-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Dryness-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Dryness change from baseline-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Dryness change from baseline-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Edema-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Edema-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Edema change from baseline-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Edema change from baseline-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Erythema-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Erythema-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Erythema change from baseline-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Erythema change from baseline-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Peeling-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Peeling-Crow%'s feet and Underneath eye));
+%IndPlot(test=%str(Clinical assessment-Safety/Tolerance evaluation-Peeling change from baseline-site: Crow%'s feet and Underneath eye), file=%str(Clinical-Safety-Peeling change from baseline-Crow%'s feet and Underneath eye));
+
+%IndPlot(test=%str(Clinical assessment-Visual assessment in vivo-Grade of wrinkles-site: Crow%'s feet), file=%str(Clinical-Visual-Grade of wrinkles-Crows%' feet));
+%IndPlot(test=%str(Clinical assessment-Visual assessment in vivo-Grade of wrinkles change from baseline-site: Crow%'s feet), file=%str(Clinical-Visual-Wrinkls change from baseline-Crow%'s feet));
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Grade of wrinkles-site: Forehead, file=Clinical-Visual-Wrinkles-Forehead);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Grade of wrinkles change from baseline-site: Forehead, file=Clinical-Visual-Wrinkles change from baseline-Forehead);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Grade of wrinkles-site: Underneath eye, file=Clinical-Visual-Wrinkles-Underneath eye);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Grade of wrinkles change from baseline-site: Underneath eye, file=Clinical-Visual-Wrinkles change from baseline-Underneath eye);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin smoothness-TACTILE-site: Face, file=Clinical-Visual-Tactitle smoothness-Face);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin smoothness change from baseline-TACTILE-site: Face, file=Clinical-Visual-Tactile smoothness change from baseline-Face);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin smoothness-VISUAL-site: Face, file=Clinical-Visual-Visual smoothness-Face);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin smoothness change from baseline-VISUAL-site: Face, file=Clinical-Visual-Visual smoothness change from baseline-Face);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin tone evenness-site: Face, file=Clinical-Visual-Skin evenness-Face);
+%IndPlot(test=Clinical assessment-Visual assessment in vivo-Skin tone evenness change from baseline-site: Face, file=Clinical-Visual-Skin evenness change from baseline-Face);
+
+%IndPlot(test=Instrumental measurements-Corneometer-Capacitance-site: Cheek, file=Instrumental-Corneometer-Capacitance-Cheek);
+%IndPlot(test=Instrumental measurements-Corneometer-Mean-site: Cheek, file=Instrumental-Corneometer-Mean-Cheek);
+%IndPlot(test=Instrumental measurements-Corneometer-Corneometer mean change from baseline-site: Cheek, file=Instrumental-Corneometer-Mean change from baseline-Cheek);
+%IndPlot(test=Instrumental measurements-Transepidermal water loss (TEWL)-Value-site: Cheek, file=Instrumental-TEWL-Value-Cheek);
+%IndPlot(test=Instrumental measurements-Transepidermal water loss (TEWL)-Mean-site: Cheek, file=Instrumental-TEWL-Mean-Cheek);
+%IndPlot(test=Instrumental measurements-Transepidermal water loss (TEWL)-TEWL mean change from baseline-site: Cheek, file=Instrumental-TEWL-Mean change from baseline-Cheek);
+
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Burning-site: Face), file=Self-Safety-Burning-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Burning change from baseline), file=Self-Safety-Burning change from baseline-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Itching-site: Face), file=Self-Safety-Itching-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Itching change from baseline), file=Self-Safety-Itching change from baseline-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Pain-site: Face), file=Self-Safety-Pain-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Pain change from baseline-site: Face), file=Self-Safety-Pain change from baseline-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Stinging-site: Face), file=Self-Safety-Stinging-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Stinging change from baseline-site: Face), file=Self-Safety-Stinging-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Tightness-site: Face), file=Self-Safety-Tightness-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Tightness change from baseline-site: Face), file=Self-Safety-Tightness change from baseline-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Tingling-site: Face), file=Self-Safety-Tingling-Face);
+%IndPlot(test=%str(Self-assessment-Safety/Tolerance evaluation-Tingling change from baseline-site: Face), file=Self-Safety-Tingling change from baseline-Face);
+
+ods pdf close;
