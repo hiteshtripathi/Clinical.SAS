@@ -1,0 +1,141 @@
+
+%macro datasets_freq(ds=, evtest=, site=, grp=);
+data &ds;
+  set adeff;
+  by test evtest trtn trt randoid visitdy;
+  where evtest="&evtest" and site=&site &grp;
+  if first.randoid then base=.;
+  retain base;
+  if visitdy=0 then base=evstresn;
+  chg=evstresn-base;
+run;
+
+*create macro variables for columns;
+proc freq data=&ds;
+  tables evstresn / out=col_&ds;
+  tables chg / out=colchg_&ds;
+run;
+
+data temp_&ds;
+  length colname $20;
+  set col_&ds end=eof;
+  if evstresn >= 0 then colname="_"||strip(tranwrd(put(evstresn, best12.), ".", "D"));
+    else if evstresn < 0 then colname=strip(tranwrd(tranwrd(put(evstresn, best12.), "-", "N"), ".", "D"));
+  do i = 1 to _n_;
+    if i=_n_ then do;
+      call symput ("col"||strip(i)||"_&ds", evstresn);
+	  call symput ("colname"||strip(i)||"_&ds", colname);
+      end;
+    end;
+  if eof then call symput("tempn_&ds", "temp"||strip(_n_));
+run;
+
+data temp2_&ds;
+  set temp_&ds end=eof;
+  length freqcol_&ds $200;
+  array temp{*} $20 temp1 - &&tempn_&ds;
+  retain temp:;
+  freqcol_&ds="";
+  do i = 1 to _n_;
+    if i=_n_ then do;
+    temp{i}=colname;
+	end;
+	freqcol_&ds=catx(" ", freqcol_&ds, temp{i});
+  end;
+  if eof then call symput("freqcol_&ds", freqcol_&ds);
+run;
+
+
+data tempchg_&ds;
+  length colname $20;
+  set colchg_&ds end=eof;
+  if chg >= 0 then colname="_"||strip(tranwrd(put(chg, best12.), ".", "D"));
+    else if chg < 0 then colname=strip(tranwrd(tranwrd(put(chg, best12.), "-", "N"), ".", "D"));
+  do i = 1 to _n_;
+    if i=_n_ then do;
+      call symput ("colchg"||strip(i)||"_&ds", chg);
+	  call symput ("colnamechg"||strip(i)||"_&ds", colname);
+      end;
+    end;
+  if eof then call symput("tempchgn_&ds", "tempchg"||strip(_n_));
+run;
+
+data tempchg2_&ds;
+  set tempchg_&ds end=eof;
+  length freqcolchg_&ds $200;
+  array tempchg{*} $20 tempchg1 - &&tempchgn_&ds;
+  retain tempchg:;
+  freqcolchg_&ds="";
+  do i = 1 to _n_;
+    if i=_n_ then do;
+    tempchg{i}=colname;
+	end;
+	freqcolchg_&ds=catx(" ", freqcolchg_&ds, tempchg{i});
+  end;
+  if eof then call symput("freqcolchg_&ds", freqcolchg_&ds);
+run;
+
+
+
+
+*frequency count table;
+proc freq data=&ds;
+  format trtn trtn. visitdy timenum.;
+  tables trtn*visitdy*evstresn /  out=freq_&ds outpct;
+run;
+
+data freq_&ds;
+  set freq_&ds;
+  value=strip(put(count, 3.0))||" ("||strip(put(pct_row, 5.2))||"%)";
+run;
+
+proc transpose data=freq_&ds out=freq1_&ds(drop=_name_);
+  format trtn trtn. visitdy timenum.;
+  by trtn visitdy;
+  id evstresn;
+  var value;
+run;
+
+data freq2_&ds;
+  set freq1_&ds;
+  count=0;
+  array temp{*} _:;
+  do i = 1 to dim(temp);
+    if temp[i]="" then temp[i]="0 (0.00%)";
+	count=input(scan(temp[i], 1, "("), 3.0)+count;
+    end;
+run;
+
+
+proc freq data=&ds;
+  format trtn trtn. visitdy timenum.;
+  tables trtn*visitdy*chg /  out=freqchg_&ds outpct;
+run;
+
+data freqchg_&ds;
+  set freqchg_&ds;
+  value=strip(put(count, 3.0))||" ("||strip(put(pct_row, 5.2))||"%)";
+run;
+
+proc transpose data=freqchg_&ds out=freqchg1_&ds(drop=_name_);
+  format trtn trtn. visitdy timenum.;
+  by trtn visitdy;
+  id chg;
+  var value;
+run;
+
+data freqchg2_&ds;
+  set freqchg1_&ds;
+  count=0;
+  array temp{*} N: _:;
+  do i = 1 to dim(temp);
+    if temp[i]="" then temp[i]="0 (0.00%)";
+	count=input(scan(temp[i], 1,  "("), 3.0)+count;
+    end;
+  *test=scan(_0, 1, "(");
+run;
+
+
+%put _user_;
+
+%mend;
