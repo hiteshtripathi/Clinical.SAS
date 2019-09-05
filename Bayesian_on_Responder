@@ -1,0 +1,480 @@
+
+%macro BayesianResponder(ds=, evtest=, site=, trt0=, trt1=, print=);
+data &ds;
+  set adeff;
+  by randoid test site side visitdy;
+  if evtest="&evtest" and site=&site and visitdy ne -7;
+  if first.randoid then base=.;
+  retain base;
+  if visitdy=0 then base=evstresn;
+  chg=evstresn-base;
+run; 
+
+proc sort data=&ds;
+  by randoid evtest site visitdy treatment;
+run;
+
+proc transpose data=&ds out=raw_&ds;
+  by randoid evtest site visitdy treatment;
+  id side;
+  var evstresn;
+run;
+
+data raw_&ds;
+  set raw_&ds;
+  value=mean(left, right);
+run;
+
+proc sort data=raw_&ds;
+  by treatment;
+run;
+
+
+proc transpose data=&ds out=chg_&ds;
+  by randoid evtest site visitdy treatment;
+  id side;
+  var chg;
+run;
+
+data chg_&ds;
+  set chg_&ds;
+  value=mean(left, right);
+run;
+
+proc sort data=chg_&ds;
+  by treatment;
+run;
+
+
+proc sort data=raw_&ds; by randoid visitdy treatment; run;
+proc sort data=chg_&ds; by randoid visitdy treatment; run;
+
+
+data formix_&ds;
+  merge raw_&ds(keep=randoid visitdy treatment value) chg_&ds(keep=randoid visitdy treatment value rename=(value=chg));
+  by randoid visitdy treatment;
+  if first.randoid then base=.;
+  retain base;
+  if visitdy=0 then base=value;
+run;
+
+proc sort data=&ds;
+  by treatment randoid site side visitdy;
+run;
+
+
+data rspd_&ds;
+  set formix_&ds;
+  if chg <= -0.4 then mod=1; else mod=0;
+  if chg <= -1 then str=1; else str=0;
+run;
+
+proc freq data=rspd_&ds noprint;
+  tables treatment*visitdy*mod / out=mod_&ds outpct;
+  tables treatment*visitdy*str / out=str_&ds outpct;
+run;
+
+
+data _null_;
+  call symput("sitename", put(&site, site.));
+  call symput("control", strip(put("&trt0", $trt.)));
+  call symput("active", strip(put("&trt1", $trt.)));
+run;
+
+/***/
+
+proc transpose data=mod_&ds out=mod1_&ds;
+  by treatment visitdy;
+  id mod;
+  var count;
+run;
+
+data mod1_&ds;
+  set mod1_&ds;
+  if _1=. then _1=0;
+  n=sum(_0, _1);
+  p=_1/n;
+  drop _name_ _label_;
+  where visitdy ne 0;
+  if treatment="&trt0" then trti=0; 
+  if treatment="&trt1" then trti=1;
+run;
+
+
+proc report data=mod1_&ds missing split="^" &print;
+  format treatment $trt.;
+  column treatment visitdy n _1 p;
+  define treatment / group "Treatment" order=internal;
+  define visitdy / display "Time" style(column)=[just=left];
+  define n / display "N (Total)" style(column)=[just=center];
+  define _1 / display "n (Responder)" style(column)=[just=center];
+  define p / display "Proportion" style(column)=[just=center];
+  compute after treatment;
+    line "";
+	endcomp;
+title1 "Number and Proportion of Moderate Responders";
+title2 "Wrinkles - &sitename";
+run;
+title;
+
+proc mcmc data=mod1_&ds ntu=1000 nmc=20000 nthin=2 propcov=quanew diag=(mcse ess) outpost=modpost_&ds seed=246810;
+  ods select mcse ess TADpanel;
+  parms alpha beta1 beta2 beta3;
+  prior alpha beta: ~ normal (0, var=10000);
+  p=logistic(alpha + beta1*trti + beta2*visitdy + beta3*trti*visitdy);
+  model _1 ~ binomial(n=n, p=p);
+run;
+
+data modpost1_&ds;
+  set modpost_&ds;
+  pi=logistic(alpha+beta1+beta2*28+beta3*28)-logistic(alpha+beta2*28); timec=28; output;
+  pi=logistic(alpha+beta1+beta2*56+beta3*56)-logistic(alpha+beta2*56); timec=56; output;
+  pi=logistic(alpha+beta1+beta2*84+beta3*84)-logistic(alpha+beta2*84); timec=84; output;
+  pi=logistic(alpha+beta1+beta2*112+beta3*112)-logistic(alpha+beta2*112); timec=112; output;
+  pi=logistic(alpha+beta1+beta2*140+beta3*140)-logistic(alpha+beta2*140); timec=140; output;
+  pi=logistic(alpha+beta1+beta2*168+beta3*168)-logistic(alpha+beta2*168); timec=168; output;
+run;
+
+
+proc means data=modpost1_&ds;
+  class timec;
+  var pi;
+  output out=modstat_&ds mean=mu std=sd;
+run;
+
+
+data _null_;
+  set modstat_&ds;
+  if timec=28 then do;
+    call symput("modmu28_&ds", mu);
+	call symput("modsd28_&ds", sd);
+	end;
+	else if timec=56 then do;
+	  call symput("modmu56_&ds", mu);
+	  call symput("modsd56_&ds", sd);
+	  end;
+	  else if timec=84 then do;
+	    call symput("modmu84_&ds", mu);
+		call symput("modsd84_&ds", sd);
+		end;
+		else if timec=112 then do;
+		  call symput("modmu112_&ds", mu);
+		  call symput("modsd112_&ds", sd);
+		  end;
+		  else if timec=140 then do;
+		    call symput("modmu140_&ds", mu);
+			call symput("modsd140_&ds", sd);
+			end;
+			else if timec=168 then do;
+			  call symput("modmu168_&ds", mu);
+			  call symput("modsd168_&ds", sd);
+			  end;
+run;
+
+
+data pdfmod28_&ds;
+  do x=-5*&&modsd28_&ds + &&modmu28_&ds to 5*&&modsd28_&ds + &&modmu28_&ds by 0.02*&&modsd28_&ds;
+    pdf=pdf("normal", x, &&modmu28_&ds, &&modsd28_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu28_&ds, &&modsd28_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu28_&ds, &&modsd28_&ds); else uSup=0;
+	time="Day 28"; timenum=28;
+	output;
+  end;
+run;
+
+data pdfmod56_&ds;
+  do x=-5*&&modsd56_&ds + &&modmu56_&ds to 5*&&modsd56_&ds + &&modmu56_&ds by 0.02*&&modsd56_&ds;
+    pdf=pdf("normal", x, &&modmu56_&ds, &&modsd56_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu56_&ds, &&modsd56_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu56_&ds, &&modsd56_&ds); else uSup=0;
+	time="Day 56"; timenum=56;
+	output;
+  end;
+run;
+
+data pdfmod84_&ds;
+  do x=-5*&&modsd84_&ds + &&modmu84_&ds to 5*&&modsd84_&ds + &&modmu84_&ds by 0.02*&&modsd84_&ds;
+    pdf=pdf("normal", x, &&modmu84_&ds, &&modsd84_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu84_&ds, &&modsd84_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu84_&ds, &&modsd84_&ds); else uSup=0;
+	time="Day 84"; timenum=84;
+	output;
+  end;
+run;
+
+data pdfmod112_&ds;
+  do x=-5*&&modsd112_&ds + &&modmu112_&ds to 5*&&modsd112_&ds + &&modmu112_&ds by 0.02*&&modsd112_&ds;
+    pdf=pdf("normal", x, &&modmu112_&ds, &&modsd112_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu112_&ds, &&modsd112_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu112_&ds, &&modsd112_&ds); else uSup=0;
+	time="Day 112"; timenum=112;
+	output;
+  end;
+run;
+
+data pdfmod140_&ds;
+  do x=-5*&&modsd140_&ds + &&modmu140_&ds to 5*&&modsd140_&ds + &&modmu140_&ds by 0.02*&&modsd140_&ds;
+    pdf=pdf("normal", x, &&modmu140_&ds, &&modsd140_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu140_&ds, &&modsd140_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu140_&ds, &&modsd140_&ds); else uSup=0;
+	time="Day 140"; timenum=140;
+	output;
+  end;
+run;
+
+data pdfmod168_&ds;
+  do x=-5*&&modsd168_&ds + &&modmu168_&ds to 5*&&modsd168_&ds + &&modmu168_&ds by 0.02*&&modsd168_&ds;
+    pdf=pdf("normal", x, &&modmu168_&ds, &&modsd168_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&modmu168_&ds, &&modsd168_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&modmu168_&ds, &&modsd168_&ds); else uSup=0;
+	time="Day 168"; timenum=168;
+	output;
+  end;
+run;
+
+proc sql;
+  create table pdfmod_&ds as
+  select * from pdfmod28_&ds
+  union
+  select * from pdfmod56_&ds
+  union 
+  select * from pdfmod84_&ds
+  union
+  select * from pdfmod112_&ds
+  union
+  select * from pdfmod140_&ds
+  union
+  select * from pdfmod168_&ds
+  ;
+quit;
+
+proc sort data=pdfmod_&ds;
+  by timenum;
+run;
+
+
+proc sgpanel data=pdfmod_&ds noautolegend;
+  format timenum timenum.;
+  panelby timenum / onepanel columns=3 novarname headerattrs=(size=12) headerbackcolor=lightgray;
+  band x=x lower=lower upper=uInf / fillattrs=(color=red);
+  band x=x lower=lower upper=uSup / fillattrs=(color=green);
+  series x=x y=pdf / lineattrs=(color=black);
+  series x=x y=lower / lineattrs=(color=black);
+  refline 0 / axis=x lineattrs=(pattern=2 color=black);
+  rowaxis display=(nolabel noticks novalues);
+  colaxis label="Difference between Proportion of Moderate Responders";
+  title1 "Wrinkles - &sitename";
+  title2 "&active vs. &control";
+  footnote1 j=c "Results are from Bayesian analysis using MCMC procedure";
+  footnote2 j=c "The proportion of responder is modeled with binomial distribution";
+  footnote3 j=c "where proportion = logistic(fixed intercept + beta1*treatment + beta2*time + beta3*treatment*time)";
+run; 
+title;
+footnote;
+
+
+
+/***/
+proc transpose data=str_&ds out=str1_&ds;
+  by treatment visitdy;
+  id str;
+  var count;
+run;
+
+data str1_&ds;
+  set str1_&ds;
+  if _1=. then _1=0;
+  n=sum(_0, _1);
+  p=_1/n;
+  drop _name_ _label_;
+  where visitdy ne 0;
+  if treatment="&trt0" then trti=0; 
+  if treatment="&trt1" then trti=1;
+run;
+
+
+proc report data=str1_&ds missing split="^" &print;
+  format treatment $trt.;
+  column treatment visitdy n _1 p;
+  define treatment / group "Treatment" order=internal;
+  define visitdy / display "Time" style(column)=[just=left];
+  define n / display "N (Total)" style(column)=[just=center];
+  define _1 / display "n (Responder)" style(column)=[just=center];
+  define p / display "Proportion" style(column)=[just=center];
+  compute after treatment;
+    line "";
+	endcomp;
+title1 "Number and Proportion of Strong Responders";
+title2 "Wrinkles - &sitename";
+run;
+title;
+
+proc mcmc data=str1_&ds ntu=1000 nmc=20000 nthin=2 propcov=quanew diag=(mcse ess) outpost=strpost_&ds seed=246810;
+  ods select mcse ess TADpanel;
+  parms alpha beta1 beta2 beta3;
+  prior alpha beta: ~ normal (0, var=10000);
+  p=logistic(alpha + beta1*trti + beta2*visitdy + beta3*trti*visitdy);
+  model _1 ~ binomial(n=n, p=p);
+run;
+
+
+data strpost1_&ds;
+  set strpost_&ds;
+  pi=logistic(alpha+beta1+beta2*28+beta3*28)-logistic(alpha+beta2*28); timec=28; output;
+  pi=logistic(alpha+beta1+beta2*56+beta3*56)-logistic(alpha+beta2*56); timec=56; output;
+  pi=logistic(alpha+beta1+beta2*84+beta3*84)-logistic(alpha+beta2*84); timec=84; output;
+  pi=logistic(alpha+beta1+beta2*112+beta3*112)-logistic(alpha+beta2*112); timec=112; output;
+  pi=logistic(alpha+beta1+beta2*140+beta3*140)-logistic(alpha+beta2*140); timec=140; output;
+  pi=logistic(alpha+beta1+beta2*168+beta3*168)-logistic(alpha+beta2*168); timec=168; output;
+run;
+
+
+proc means data=strpost1_&ds;
+  class timec;
+  var pi;
+  output out=strstat_&ds mean=mu std=sd;
+run;
+
+
+data _null_;
+  set strstat_&ds;
+  if timec=28 then do;
+    call symput("strmu28_&ds", mu);
+	call symput("strsd28_&ds", sd);
+	end;
+	else if timec=56 then do;
+	  call symput("strmu56_&ds", mu);
+	  call symput("strsd56_&ds", sd);
+	  end;
+	  else if timec=84 then do;
+	    call symput("strmu84_&ds", mu);
+		call symput("strsd84_&ds", sd);
+		end;
+		else if timec=112 then do;
+		  call symput("strmu112_&ds", mu);
+		  call symput("strsd112_&ds", sd);
+		  end;
+		  else if timec=140 then do;
+		    call symput("strmu140_&ds", mu);
+			call symput("strsd140_&ds", sd);
+			end;
+			else if timec=168 then do;
+			  call symput("strmu168_&ds", mu);
+			  call symput("strsd168_&ds", sd);
+			  end;
+run;
+
+
+data pdfstr28_&ds;
+  do x=-5*&&strsd28_&ds + &&strmu28_&ds to 5*&&strsd28_&ds + &&strmu28_&ds by 0.02*&&strsd28_&ds;
+    pdf=pdf("normal", x, &&strmu28_&ds, &&strsd28_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu28_&ds, &&strsd28_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu28_&ds, &&strsd28_&ds); else uSup=0;
+	time="Day 28"; timenum=28;
+	output;
+  end;
+run;
+
+data pdfstr56_&ds;
+  do x=-5*&&strsd56_&ds + &&strmu56_&ds to 5*&&strsd56_&ds + &&strmu56_&ds by 0.02*&&strsd56_&ds;
+    pdf=pdf("normal", x, &&strmu56_&ds, &&strsd56_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu56_&ds, &&strsd56_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu56_&ds, &&strsd56_&ds); else uSup=0;
+	time="Day 56"; timenum=56;
+	output;
+  end;
+run;
+
+data pdfstr84_&ds;
+  do x=-5*&&strsd84_&ds + &&strmu84_&ds to 5*&&strsd84_&ds + &&strmu84_&ds by 0.02*&&strsd84_&ds;
+    pdf=pdf("normal", x, &&strmu84_&ds, &&strsd84_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu84_&ds, &&strsd84_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu84_&ds, &&strsd84_&ds); else uSup=0;
+	time="Day 84"; timenum=84;
+	output;
+  end;
+run;
+
+data pdfstr112_&ds;
+  do x=-5*&&strsd112_&ds + &&strmu112_&ds to 5*&&strsd112_&ds + &&strmu112_&ds by 0.02*&&strsd112_&ds;
+    pdf=pdf("normal", x, &&strmu112_&ds, &&strsd112_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu112_&ds, &&strsd112_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu112_&ds, &&strsd112_&ds); else uSup=0;
+	time="Day 112"; timenum=112;
+	output;
+  end;
+run;
+
+data pdfstr140_&ds;
+  do x=-5*&&strsd140_&ds + &&strmu140_&ds to 5*&&strsd140_&ds + &&strmu140_&ds by 0.02*&&strsd140_&ds;
+    pdf=pdf("normal", x, &&strmu140_&ds, &&strsd140_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu140_&ds, &&strsd140_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu140_&ds, &&strsd140_&ds); else uSup=0;
+	time="Day 140"; timenum=140;
+	output;
+  end;
+run;
+
+data pdfstr168_&ds;
+  do x=-5*&&strsd168_&ds + &&strmu168_&ds to 5*&&strsd168_&ds + &&strmu168_&ds by 0.02*&&strsd168_&ds;
+    pdf=pdf("normal", x, &&strmu168_&ds, &&strsd168_&ds);
+	lower=0;
+	if x <= 0 then uInf=pdf("normal", x, &&strmu168_&ds, &&strsd168_&ds); else uInf=0;
+	if x > 0 then uSup=pdf("normal", x, &&strmu168_&ds, &&strsd168_&ds); else uSup=0;
+	time="Day 168"; timenum=168;
+	output;
+  end;
+run;
+
+proc sql;
+  create table pdfstr_&ds as
+  select * from pdfstr28_&ds
+  union
+  select * from pdfstr56_&ds
+  union 
+  select * from pdfstr84_&ds
+  union
+  select * from pdfstr112_&ds
+  union
+  select * from pdfstr140_&ds
+  union
+  select * from pdfstr168_&ds
+  ;
+quit;
+
+proc sort data=pdfstr_&ds;
+  by timenum;
+run;
+
+
+proc sgpanel data=pdfstr_&ds noautolegend;
+  format timenum timenum.;
+  panelby timenum / onepanel columns=3 novarname headerattrs=(size=12) headerbackcolor=lightgray;
+  band x=x lower=lower upper=uInf / fillattrs=(color=red);
+  band x=x lower=lower upper=uSup / fillattrs=(color=green);
+  series x=x y=pdf / lineattrs=(color=black);
+  series x=x y=lower / lineattrs=(color=black);
+  refline 0 / axis=x lineattrs=(pattern=2 color=black);
+  rowaxis display=(nolabel noticks novalues);
+  colaxis label="Difference between Proportion of Strong Responders";
+  title1 "Wrinkles - &sitename";
+  title2 "&active vs. &control";
+  footnote1 j=c "Results are from Bayesian analysis using MCMC procedure";
+  footnote2 j=c "The proportion of responder is modeled with binomial distribution";
+  footnote3 j=c "where proportion = logistic(fixed intercept + beta1*treatment + beta2*time + beta3*treatment*time)";
+run; 
+title;
+footnote;
+%mend;
+
