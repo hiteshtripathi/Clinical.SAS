@@ -1,0 +1,320 @@
+/*** clear work library ***/
+proc datasets lib=work memtype=data kill; quit;
+
+/*** set datapath, outputpath and project***/
+%let datapath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Data\ACR_SMAD_18-12664_DB_lock_20190410);
+%let outputpath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Outputs);
+%let project=SMAD;
+libname &project "&datapath";
+
+/*** import format if any ***/
+proc format cntlin=&project..formats;
+run;
+
+proc format;
+  value $trt "Group 1"="Placebo"
+             "Group 2"="Neutrogena Regenerating Cream"
+			 'Group 3'='0.15%SM 5253'
+			 ;
+run;
+
+options fmtsearch=(work &project);
+ods graphics / noborder;
+
+
+proc sort data=&project..dbext_rd; by randoid; run;
+proc sort data=&project..dm; by randoid; run;
+proc sort data=&project..pop; by randoid; run;
+
+data demo(rename=(rdstresc=trt));
+  merge &project..dbext_rd &project..dm &project..pop;
+  by randoid;
+  if rdstresc="Group 1" then trtn=1;
+    else if rdstresc="Group 2" then trtn=2;
+	else if rdstresc="Group 3" then trtn=3;
+run;
+
+
+/*** prepare data sets for different population ***/
+data rs;
+  set demo;
+  if RS=1;
+run;
+
+data ss;
+  set demo;
+  if ss=1;
+run;
+
+data fas;
+  set demo;
+  if fas=1;
+run;
+
+data pps;
+  set demo;
+  if pps=1;
+run;
+
+/*****/
+%macro demo(pop=, population=);
+data adsl1_&pop;
+  set &pop;
+  output;
+  trtn=4;
+  output;
+run;
+
+proc freq data=adsl1_&pop;
+  tables trtn*sex / out=freqsex_&pop outpct missing;
+run;
+
+
+proc freq data=adsl1_&pop;
+  tables trtn*phototype / out=freqtype_&pop outpct missing;
+run;
+
+proc sort data=adsl1_&pop;
+  by trtn;
+run;
+
+proc univariate data=adsl1_&pop;
+  by trtn;
+  var age;
+  output out=freqage_&pop n=n_ mean=mean_ std=std_ min=min_ max=max_;
+run;
+
+
+data freqage_&pop;
+  length n $10 mean $10 std $10 min $10 max $10;
+  set freqage_&pop;
+  n=put(n_, 3.0);
+  mean=put(mean_, 5.1);
+  std=put(std_, 5.2);
+  min=put(min_, 5.1);
+  max=put(max_, 5.1);
+run;
+
+proc transpose data=freqage_&pop out=R10_&pop(rename=(_name_=des));
+  id trtn;
+  var n mean std min max;
+run;
+
+data R_10_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  des="#S={font_weight=bold}Age";
+  row=10;
+run;
+
+data R_11_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  set R10_&pop;
+  if des="n" then do;
+    des="#{nbspace 6}N";
+	row=11;
+	end;
+    else if des="mean" then do;
+	  des="#{nbspace 6}Mean";
+	  row=12;
+	  end;
+	  else if des="std" then do;
+	    des="#{nbspace 6}Standard Deviation";
+		row=13;
+		end;
+		else if des="min" then do;
+		  des="#{nbspace 6}Minimum";
+		  row=14;
+		  end;
+		  else if des="max" then do;
+		    des="#{nbspace 6}Maximum";
+			row=15;
+			end;
+run;
+
+data freqsex_&pop;
+  length value $50;
+  set freqsex_&pop;
+  value=cat(count, " (", put(pct_row, 5.1), "%)");
+run;
+
+proc sort data=freqsex_&pop;
+  by sex;
+run;
+
+proc transpose data=freqsex_&pop out=R20_&pop(drop=_name_);
+  by sex;
+  id trtn;
+  var value;
+run;
+
+data R_20_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  des="#S={font_weight=bold}Sex";
+  row=20;
+run;
+
+data R_21_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  set R20_&pop;
+  if sex=1 then do;
+    des="#{nbspace 6}Male";
+	row=21;
+	end;
+	else if sex=2 then do;
+	  des="#{nbspace 6}Female";
+	  row=22;
+	  end;
+run;
+
+data freqtype_&pop;
+  length value $50;
+  set freqtype_&pop;
+  value=cat(count, " (", put(pct_row, 5.1), "%)");
+run;
+
+proc sort data=freqtype_&pop;
+  by phototype;
+run;
+
+proc transpose data=freqtype_&pop out=R30_&pop(drop=_name_);
+  by phototype;
+  id trtn;
+  var value;
+run;
+
+data R_30_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  des="#S={font_weight=bold}Phototype";
+  row=30;
+run;
+
+data R_31_&pop;
+  length des $50 _1 $20 _2 $20 _3 $20 _4 $20;
+  set R30_&pop;
+  if phototype=1 then do;
+    des="#{nbspace 6}I";
+	row=31;
+    end;
+	else if phototype=2 then do;
+	  des="#{nbspace 6}II";
+	  row=32;
+	  end;
+	  else if phototype=3 then do;
+	    des="#{nbspace 6}III";
+		row=33;
+		end;
+		else if phototype=4 then do;
+		  des="#{nbspace 6}IV";
+		  row=34;
+		  end;
+  if _1="" then _1="0 ( 0.0%)";
+  if _2="" then _2="0 ( 0.0%)";
+  if _3="" then _1="0 ( 0.0%)";
+  if _4="" then _2="0 ( 0.0%)";
+run;
+
+
+data combine_&pop;
+  merge R_10_&pop R_11_&pop R_20_&pop R_21_&pop R_30_&pop R_31_&pop;
+  by row;
+  keep des _1 _2 _3 _4 row;
+run;
+%mend;
+
+/*** calculate big N ***/
+data _null_;
+  set adsl1_rs end=eof;
+  if trtn=1 then n1+1;
+    else if trtn=2 then n2+1;
+	  else if trtn=3 then n3+1;
+	    else if trtn=4 then n4+1;
+  if eof then do;
+    call symput ("N1_rs", cats("(N=", strip(put(n1, 4.0)), ")"));
+    call symput ("N2_rs", cats("(N=", strip(put(n2, 4.0)), ")"));
+    call symput ("N3_rs", cats("(N=", strip(put(n3, 4.0)), ")"));
+    call symput ("N4_rs", cats("(N=", strip(put(n4, 4.0)), ")"));
+    end;
+run;
+
+data _null_;
+  set adsl1_ss end=eof;
+  if trtn=1 then n1+1;
+    else if trtn=2 then n2+1;
+	  else if trtn=3 then n3+1;
+	    else if trtn=4 then n4+1;
+  if eof then do;
+    call symput ("N1_s", cats("(N=", strip(put(n1, 4.0)), ")"));
+    call symput ("N2_ss", cats("(N=", strip(put(n2, 4.0)), ")"));
+    call symput ("N3_ss", cats("(N=", strip(put(n3, 4.0)), ")"));
+    call symput ("N4_ss", cats("(N=", strip(put(n4, 4.0)), ")"));
+    end;
+run;
+
+data _null_;
+  set adsl1_fas end=eof;
+  if trtn=1 then n1+1;
+    else if trtn=2 then n2+1;
+	  else if trtn=3 then n3+1;
+	    else if trtn=4 then n4+1;
+  if eof then do;
+    call symput ("N1_fas", cats("(N=", strip(put(n1, 4.0)), ")"));
+    call symput ("N2_fas", cats("(N=", strip(put(n2, 4.0)), ")"));
+    call symput ("N3_fas", cats("(N=", strip(put(n3, 4.0)), ")"));
+    call symput ("N4_fas", cats("(N=", strip(put(n4, 4.0)), ")"));
+    end;
+run;
+
+data _null_;
+  set adsl1_pps end=eof;
+  if trtn=1 then n1+1;
+    else if trtn=2 then n2+1;
+	  else if trtn=3 then n3+1;
+	    else if trtn=4 then n4+1;
+  if eof then do;
+    call symput ("N1_pps", cats("(N=", strip(put(n1, 4.0)), ")"));
+    call symput ("N2_pps", cats("(N=", strip(put(n2, 4.0)), ")"));
+    call symput ("N3_pps", cats("(N=", strip(put(n3, 4.0)), ")"));
+    call symput ("N4_pps", cats("(N=", strip(put(n4, 4.0)), ")"));
+    end;
+run;
+
+/*** report ***/
+ods escapechar="#";
+%macro report(pop=, population=);
+options nonumber nodate;
+  %global Bookmark;
+  %let Bookmark=&population;
+  ods proclabel="&Bookmark Table";
+proc report data=combine_&pop headline headskip split="^" missing;
+  column des _1 _2 _3 _4 row;
+  define row / order noprint;
+  define des / display " ";
+  define _1 / display "Placebo^&&N1_&pop" style(column)=[just=center width=180];
+  define _2 / display "Neutrogena^&&N2_&pop" style(column)=[just=center width=180];
+  define _3 / display "0.15%SM 5253^&&N3_&pop" style(column)=[just=center width=180];
+  define _4 / display "Overall^&&N4_&pop" style(column)=[just=center width=180];
+title1 j=c "Demographic Characteristics";
+title2 j=c "&population";
+run;
+title;
+
+goptions reset=all;
+%mend;
+
+
+
+%demo(pop=rs, population=Randomization Set);
+%demo(pop=ss, population=Safetey Set);
+%demo(pop=fas, population=Full Analysis Set);
+%demo(pop=pps, population=Per Protocol Set);
+
+
+
+
+
+ods pdf file="&outputpath\SMAD_demo_18Apr2019.pdf";
+%report(pop=rs, population=Randomization Set);
+%report(pop=ss, population=Safetey Set);
+%report(pop=fas, population=Full Analysis Set);
+%report(pop=pps, population=Per Protocol Set);
+ods pdf close;
