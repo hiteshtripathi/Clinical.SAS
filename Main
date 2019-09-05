@@ -1,0 +1,638 @@
+/*** clear work library ***/
+proc datasets lib=work memtype=data kill; quit;
+
+/*** set datapath, outputpath and project***/
+%let datapath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Data\ACR_SMAD_18-12664_DB_lock_20190711);
+%let outputpath=%str(G:\Scientific Computing\12 - Advanced Research\SMAD\Outputs);
+%let project=SMAD;
+libname &project "&datapath";
+
+/*** import format if any ***/
+proc format cntlin=&project..formats;
+run;
+
+proc format;
+  value $trt "Group 1"="Placebo"
+             "Group 2"="Neutrogena Regenerating Cream"
+			 'Group 3'='0.15%SM 5253'
+			 ;
+  value trtn 1="Placebo"
+             2="Neutrogena Regenerating Cream"
+			 3='0.15%SM 5253'
+			 ;
+run;
+
+options fmtsearch=(work &project);
+ods graphics / noborder;
+
+
+data attrmap;
+  length value $50 fillcolor $20 markersymbol $20 markercolor $20 linecolor $20;
+  input value $1-30 fillcolor $ markersymbol $ markercolor $ linecolor $ linepattern id $;
+datalines;
+Placebo                       brown circlefilled brown brown 1 myid1
+Neutrogena Regenerating Cream lightblue circlefilled lightblue lightblue 1 myid1
+0.15%SM 5253                  moderateblue circlefilled moderateblue moderateblue 1 myid1
+;
+run;
+
+/************************************************************************************/
+
+data adeff;
+  set &project..eval;
+  test=catx("-",put(cat, $cat.), put(scat, $scat.), evtest, evgrpid, "Site: "||put(site, site.));
+  time=put(visitdy, timenum.);
+run;
+
+proc sort data=adeff;
+  by randoid evtest visitdy tpt tptref;
+run;
+
+proc sort data=&project..dbext_rd;
+  by randoid;
+run;
+
+data adeff;
+  merge adeff &project..dbext_rd(keep=randoid rdstresc);
+  by randoid;
+  treatment=rdstresc;
+  trt=put(treatment, $trt.);
+  if treatment="Group 1" then trtn=1;
+    else if treatment="Group 2" then trtn=2;
+	else if treatment="Group 3" then trtn=3;
+  if randoid not in (., 16, 19, 43, 48, 52, 65, 76, 79, 81, 91, 96, 98, 109, 111, 115, 118, 137);
+  if evunused ne 1; 
+run;
+
+proc freq data=adeff;
+  tables test*side;
+run;
+
+
+proc sort data=adeff;
+  by test evtest trtn trt randoid visitdy;
+run;
+
+
+
+%include "datasets_MixedwithSide.sas";
+%include "datasets_MixedNoSide.sas";
+%datasets_MixedwithSide(ds=dry, evtest=Dryness, site=62, order=1.1);
+%datasets_MixedwithSide(ds=edema, evtest=Edema, site=62, order=1.2);
+%datasets_MixedwithSide(ds=erythema, evtest=Erythema, site=62, order=1.3);
+%datasets_MixedwithSide(ds=peel, evtest=Peeling, site=62, order=1.4);
+%datasets_MixedwithSide(ds=wk_cf, evtest=Grade of wrinkles, site=2, order=2.1);
+%datasets_MixedwithSide(ds=wk_ue, evtest=Grade of wrinkles, site=41, order=2.2);
+%datasets_MixedNoSide(ds=wk_fh, evtest=Grade of wrinkles, site=6, order=2.3);
+%datasets_MixedNoSide(ds=sm_t, evtest=Skin smoothness, site=4, grp=%str(and EVGRPID='TACTILE'), order=2.4);
+%datasets_MixedNoSide(ds=sm_v, evtest=Skin smoothness, site=4, grp=%str(and EVGRPID='VISUAL'), order=2.5);
+%datasets_MixedNoSide(ds=even, evtest=Skin tone evenness, site=4, order=2.6);
+%datasets_MixedNoSide(ds=corneo, evtest=Mean, site=1, grp=%str(and SCAT='CORNEO0'), order=3.1);
+%datasets_MixedNoSide(ds=tewl, evtest=Mean, site=1, grp=%str(and SCAT='TEWL0'), order=3.2);
+%datasets_MixedNoSide(ds=burn, evtest=Burning, site=4, order=4.1);
+%datasets_MixedNoSide(ds=itch, evtest=Itching, site=4, order=4.2);
+%datasets_MixedNoSide(ds=pain, evtest=Pain, site=4, order=4.3); /*all values are 0*/
+%datasets_MixedNoSide(ds=Sting, evtest=Stinging, site=4, order=4.4);
+%datasets_MixedNoSide(ds=tight, evtest=Tightness, site=4, order=4.5);
+%datasets_MixedNoSide(ds=Tingl, evtest=Tingling, site=4, order=4.6);
+
+
+proc sql;
+  create table summary as
+  select * from diffs_trt_dry union
+  select * from diffs_trt_edema union 
+  select * from diffs_trt_erythema union 
+  select * from diffs_trt_peel union 
+  select * from diffs_trt_wk_cf union 
+  select * from diffs_trt_wk_ue union 
+  select * from diffs_trt_wk_fh union 
+  select * from diffs_trt_sm_t union 
+  select * from diffs_trt_sm_v union 
+  select * from diffs_trt_even union 
+  select * from diffs_trt_corneo union 
+  select * from diffs_trt_tewl union 
+  select * from diffs_trt_burn union 
+  select * from diffs_trt_itch union 
+  select * from diffs_trt_sting union 
+  select * from diffs_trt_tight union 
+  select * from diffs_trt_tingl
+  ;
+quit;/*pain is not in the table*/
+
+data summary;
+  set summary;
+  cat=substr(put(order, 3.), 1);
+  wk="";
+  mod="";
+  str="";
+run;
+
+
+proc sort data=summary;
+  by order trtn comp visitdy;
+run;
+
+/**********************************************************************************************/
+/**********************************************************************************************/
+ods escapechar="^";
+
+proc format;
+ 
+  value pcolor 0.1 - high = "Red"
+               0.05 -< 0.1 = "Yellow"
+			   low -< 0.05 = "Green"
+			   ;
+  value effcolor -0.5 - 0.5 = "Red"
+                 0.5 <- 0.8 = "Orange"
+				 -0.8 -< -0.5 = "Orange"
+				 0.8 <- 1.5 = "Yellow"
+				 -1.5 -< -0.8 = "Yellow"
+				 1.5 <- 2 = "Lightgreen"
+				 -2 -< -1.5 = "Lightgreen"
+				 2 <- high = "Green"
+				 low -< -2 = "Green"
+                 ;
+run;
+
+
+
+options nodate;
+ods graphics on / width=8in height=6in;
+ods rtf file="&outputpath\SMAD_batch1_PPS.rtf" headery=320 startpage=off bodytitle;
+
+
+proc report data=summary split="|" missing;
+  format visitdy timenum. FalseDiscoveryRate pvalue7.4 eff 7.3;
+  columns cat evtest comp visitdy ("Frequentist"(est ci FalseDiscoveryRate eff)) ("Bayesian"(wk mod str));
+  *define order / order noprint;
+  define cat / group noprint;
+  define evtest / group "Endpoint" order=data style(column)=[just=left];
+  define comp / display "Comparison" order=data style(column)=[just=left];
+  define visitdy / display "Time" style(column)=[just=center];
+  define est / display "Estimate|(StdErr)" style(column)=[just=center];
+  define ci / display "95% CI" style(column)=[just=center];
+  define FalseDiscoveryRate / display "Adjusted|P*" style={background=pcolor. just=center};
+  define eff / display "Effect|Size" style={background=effcolor. just=center};
+  define wk / display "Weak|Effect" style(column)=[just=center];
+  define mod / display "Moderate|Effect" style(column)=[just=center];
+  define str / display "Strong|Effect" style(column)=[just=center];
+  compute before cat;
+    line "";
+	endcomp;
+  compute after evtest;
+    line "";
+	endcomp;
+title "Summary Table";
+run;
+title;
+
+proc odstext;
+p "Table of Contents" / style=[fontsize=16pt fontweight=bold fontfamily=Arial just=center];
+
+p "Clinical Assess Safety: Dryness-Crow's feet and Underneath eye" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#dry'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Safety: Edema-Crow's feet and Underneath eye" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#edema'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Safety: Erythema-Crow's feet and Underneath eye" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#erythema'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Safety: Peeling-Crow's feet and Underneath eye" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#peel'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Grade of wrinkles-Crow's feet" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#wk_cf'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bayesian Statistics for Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+itme "Bayesian Statistics for Responders ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Grade of wrinkles-Underneath eye" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#wk_ue'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bayesian Statistics for Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+itme "Bayesian Statistics for Responders ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Grade of wrinkles-Forehead" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#wk_fh'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Skin smoothness-Tactile" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#sm_t'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Skin smoothness-Visual" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#sm_v'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Clinical Assess Visual: Skin tone evenness" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#even'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Instrumental Assess: Corneometer" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#corneo'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Instrumental Assess: TEWL" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#tewl'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Burning" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#burn'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Itching" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#itch'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Pain" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#pain'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Stinging" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#sting'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Tightness" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#tight'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+p "Self Assess Safety: Tingling" / style=[fontsize=11pt fontweight=bold fontfamily=Arial url='#tingl'];
+list / style={liststyletype="decimal" fontsize=11pt}; 
+item "Descriptive Statistics for Raw Value^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Descriptive Statistics of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Box Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison (post-baseline vs. baseline) ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Comparison between treatments ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Type 3 Tests for Fixed Effect ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Line Plot of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Bar Graph of Estimated Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Raw Value ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Frequency Table of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+item "Stacked Bar Graph of Change/D0 ^n ^n" / style=[fontsize=11pt fontfamily=Arial color=blue];
+end;
+run;
+
+%include "report.sas";
+%include "report_freq.sas";
+%include "BayesianChange.sas";
+%include "BayesianResponder.sas";
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Safety: Dryness-Crow's feet and Underneath eye}";
+%report(ds=dry, title=%str(Clincial Safety: Dryness-Crow%'s feet and Underneath eye));
+%report_freq(ds=dry, title=Dryness, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                    c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Safety: Edema-Crow's feet and Underneath eye}";
+%report(ds=edema, title=%str(Clinical Safety: Edema-Crow%'s feet and Underneath eye));
+%report_freq(ds=edema, title=Edema, _3=*, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                    c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Safety: Erythema-Crow's feet and Underneath eye}";
+%report(ds=erythema, title=%str(Clinical Safety: Erythema-Crow%'s feet and Underneath eye));
+%report_freq(ds=erythema, title=Erythema, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                          c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Safety: Peeling-Crow's feet and Underneath eye}";
+%report(ds=peel, title=%str(Clinical Safety: Peeling-Crow%'s feet and Underneath eye));
+%report_freq(ds=peel, title=Peel, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                  c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Grade of Wrinkles-Crow's Feet}";
+%report(ds=wk_cf, title=%str(Clinical Visual: Grade of wrinkles-Crow%'s feet));
+%report_freq(ds=wk_cf, title=%str(Grade of Wrinkles-Crow%'s feet), _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                                                   c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]17. Bayesian Statistics for Change/D0}";
+%BayesianChange(ds=wk_cf, evtest=Grade of wrinkles, site=2, trt0=Group 1, trt1=Group 2);
+%BayesianChange(ds=wk_cf, evtest=Grade of wrinkles, site=2, trt0=Group 1, trt1=Group 3);
+%BayesianChange(ds=wk_cf, evtest=Grade of wrinkles, site=2, trt0=Group 2, trt1=Group 3);
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]18. Bayesian Statistics for Responders}";
+%BayesianResponder(ds=wk_cf1, evtest=Grade of wrinkles, site=2, trt0=Group 1, trt1=Group 2);
+%BayesianResponder(ds=wk_cf2, evtest=Grade of wrinkles, site=2, trt0=Group 1, trt1=Group 3, print=noprint);
+%BayesianResponder(ds=wk_cf3, evtest=Grade of wrinkles, site=2, trt0=Group 2, trt1=Group 3, print=noprint);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Grade of Wrinkles-Underneath Eye}";
+%report(ds=wk_ue, title=%str(Clinical Visual: Grade of wrinkles-Underneath eye));
+%report_freq(ds=wk_ue, title=%str(Grade of Wrinkles-Underneath eye), _16=*, _17=*, _18=*, _19=*, _20=*,
+                                                                     c18=*, c19=*, c20=*);
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]17. Bayesian Statistics for Change/D0}";
+%BayesianChange(ds=wk_ue, evtest=Grade of wrinkles, site=41, trt0=Group 1, trt1=Group 2);
+%BayesianChange(ds=wk_ue, evtest=Grade of wrinkles, site=41, trt0=Group 1, trt1=Group 3);
+%BayesianChange(ds=wk_ue, evtest=Grade of wrinkles, site=41, trt0=Group 2, trt1=Group 3);
+ods rtf text="^{newline}";
+ods text="^{style[fontsize=12pt color=blue]18. Bayesian Statistics for Responders}";
+%BayesianResponder(ds=wk_ue1, evtest=Grade of wrinkles, site=41, trt0=Group 1, trt1=Group 2);
+%BayesianResponder(ds=wk_ue2, evtest=Grade of wrinkles, site=41, trt0=Group 1, trt1=Group 3, print=noprint);
+%BayesianResponder(ds=wk_ue3, evtest=Grade of wrinkles, site=41, trt0=Group 2, trt1=Group 3, print=noprint);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Grade of Wrinkles-Forehead}";
+%report(ds=wk_fh, title=%str(Clinical Visual: Grade of wirnkles-Forehead));
+%report_freq(ds=wk_fh, title=%str(Grade of Wrinkles-Forehead), _17=*, _18=*, _19=*, _20=*,
+                                                               c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Skin Smoothness-Tactile}";
+%report(ds=sm_t, title=%str(Clinical Visual: Skin smoothness-Tactile));
+%report_freq(ds=sm_t, title=%str(Skin Smoothness-Tactile), _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                                           c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Skin Smoothness-Visual}";
+%report(ds=sm_v, title=%str(Clinical Visual: Skin smoothness-Visual));
+%report_freq(ds=sm_v, title=%str(Skin Smoothness-Visual), _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                                          c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Clinical Assess Visual: Skin Tone Evenness}";
+%report(ds=even, title=%str(Clinical Visual: Skin tone evenness));
+%report_freq(ds=even, title=Skin Tone Evenness, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                                c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Instrumental Assess: Coreometer}";
+%report(ds=corneo, title=%str(Instrumental: Corneometer));
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Instrumental Assess: Tewameter}";
+%report(ds=tewl, title=%str(Instrumental: TEWL));
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Burning}";
+%report(ds=burn, title=%str(Self Safety: Burning));
+%report_freq(ds=burn, title=Burning, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                     c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Itching}";
+%report(ds=itch, title=%str(Self Safety: Itching));
+%report_freq(ds=itch, title=Itching, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                     c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Pain}";
+%report(ds=pain, title=%str(Self Safety: Pain));
+%report_freq(ds=pain, title=Pain, _2=*, _3=*, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                  c2=*, c3=*, c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*)
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Stinging}";
+%report(ds=Sting, title=%str(Self Safety: Stinging));
+%report_freq(ds=sting, title=Stinging, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                       c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Tightness}";
+%report(ds=tight, title=%str(Self Safety: Tightness));
+%report_freq(ds=tight, title=Tightness, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                        c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods text="^{style[fontsize=15pt just=center vjust=center fontweight=bold]Self Assess Safety: Tingling}";
+%report(ds=tingl, title=%str(Self Safety: Tingling));
+%report_freq(ds=tingl, title=Tingling, _4=*, _5=*, _6=*, _7=*, _8=*, _9=*, _10=*, _11=*, _12=*, _13=*, _14=*, _15=*, _16=*, _17=*, _18=*, _19=*, _20=*,
+                                       c4=*, c5=*, c6=*, c7=*, c8=*, c9=*, c10=*, c11=*, c12=*, c13=*, c14=*, c15=*, c16=*, c17=*, c18=*, c19=*, c20=*);
+
+ods rtf close;
