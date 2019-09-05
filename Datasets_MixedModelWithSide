@@ -1,0 +1,158 @@
+%macro datasets_MixedwithSide(ds=, evtest=, site=, grp=, order=);
+data &ds;
+  set adeff;
+  by test evtest trtn trt randoid visitdy;
+  where evtest="&evtest" and site=&site &grp;
+  if first.randoid then base=.;
+  retain base;
+  if visitdy=0 then base=evstresn;
+  chg=evstresn-base;
+run;
+
+/*** descriptive ***/
+proc means data=&ds n nmiss mean std median q1 q3 min max clm;
+  format trtn trtn. visitdy timenum.;
+  by trtn;
+  class visitdy;
+  var evstresn;
+  output out=des_&ds n=n_ nmiss=nmiss_ mean=mean_ std=std_ median=median_ q1=q1_ q3=q3_ min=min_ max=max_ lclm=lclm_ uclm=uclm_;
+run;
+
+data des_&ds;
+  set des_&ds;
+  where _type_ ne 0;
+  N=put(n_, 3.0);
+  Missing=put(nmiss_, 3.0);
+  Mean=put(mean_, 5.2);
+  Std=put(std_, 6.3);
+  Median=put(median_, 5.2);
+  Q1=put(q1_, 5.2);
+  Q3=put(q3_, 5.2);
+  Min=put(min_, 5.2);
+  Max=put(max_, 5.2);
+  count=1;
+run;
+
+
+proc means data=&ds n nmiss mean std median q1 q3 min max clm;
+  where visitdy ne 0;
+  format trtn trtn. visitdy timenum.;
+  by trtn;
+  class visitdy;
+  var chg;
+  output out=chg_&ds n=n_ nmiss=nmiss_ mean=mean_ std=std_ median=median_ q1=q1_ q3=q3_ min=min_ max=max_ lclm=lclm_ uclm=uclm_;
+run;
+
+data chg_&ds;
+  set chg_&ds;
+  where _type_ ne 0;
+  N=put(n_, 3.0);
+  Missing=put(nmiss_, 3.0);
+  Mean=put(mean_, 5.2);
+  Std=put(std_, 6.3);
+  Median=put(median_, 5.2);
+  Q1=put(q1_, 5.2);
+  Q3=put(q3_, 5.2);
+  Min=put(min_, 5.2);
+  Max=put(max_, 5.2);
+run;
+
+/*** inferential ***/
+proc mixed data=&ds;
+  format trtn trtn. visitdy timenum.;
+  class trtn(ref="Placebo") visitdy(ref="Day 0") randoid side;
+  model chg = base trtn visitdy trtn*visitdy side/ ddfm=kr;
+  repeated visitdy / subject=randoid*side type=AR(1);
+  lsmeans trtn / pdiff CL;
+  lsmeans visitdy / pdiff CL;
+  lsmeans trtn*visitdy / pdiff CL;
+  ods output CovParms=cov_&ds;
+  ods output lsmeans=lsm_&ds;
+  ods output tests3=model_&ds;
+  ods output diffs=diffs_&ds;
+run;
+
+data _null_;
+  set Cov_&ds;
+  if CovParm="Residual" then call symput ("std_&ds", sqrt(Estimate));
+run;
+
+data lsm_&ds;
+  set lsm_&ds;
+  test=_n_;
+run;
+
+proc multtest inpvalues=lsm_&ds(rename=(Probt=Raw_P)) fdr;
+  ods output pvalues=lsmpvalues_&ds;
+run;
+ods output close;
+
+data lsm_&ds;
+  merge lsm_&ds lsmpvalues_&ds;
+  by test;
+run;
+
+proc sort data=lsm_&ds;
+  by trtn visitdy;
+run;
+
+data diffs_time_&ds;
+  length est $20 ci $20;
+  set lsm_&ds;
+  if effect="trtn*VISITDY" and visitdy ne 0;
+  est=strip(put(estimate, 6.2))||" ("||strip(put(stderr, 7.3))||")";
+  ci="["||strip(put(lower, 6.2))||", "||strip(put(upper, 6.2))||"]";
+  *pValue=put(probt, pvalue7.4);
+  *adjP=put(FalseDiscoveryRate, pvalue7.4);
+  eff=estimate/&&std_&ds;
+run;
+
+data diffs_&ds;
+  set diffs_&ds;
+  test=_n_;
+run;
+
+proc multtest inpvalues=diffs_&ds(rename=(Probt=Raw_P)) fdr;
+  ods output pvalues=pvalues_&ds;
+run;
+ods output close;
+
+data diffs_&ds;
+  merge diffs_&ds pvalues_&ds;
+  by test;
+run;
+
+proc sort data=diffs_&ds;
+  by trtn visitdy;
+run;
+
+data diffs_trt_&ds;
+  format trtn trtn.;
+  length comp $50 est $20 ci $20;
+  set diffs_&ds;
+  if effect="trtn*VISITDY" and visitdy=_visitdy and visitdy ne 0;
+  comp=strip(put(trtn, trtn.))||" vs. "||strip(put(_trtn, trtn.));
+  est=strip(put(estimate, 6.2))||" ("||strip(put(stderr, 7.3))||")";
+  ci="["||strip(put(lower, 6.2))||", "||strip(put(upper, 6.2))||"]";
+  *pValue=put(probt, pvalue7.4);
+  *adjP=put(FalseDiscoveryRate, pvalue7.4);
+  eff=estimate/&&std_&ds;
+  order=&order;
+  evtest=catx("-", "&evtest", put(&site, site.), tranwrd(scan("&grp", 2, "="), "'", ""));
+run;
+
+proc sort data=diffs_trt_&ds;
+  by trtn;
+run;
+
+data model_&ds;
+  length eff $50;
+  set model_&ds;
+  if effect="base" then eff="Baseline";
+    else if effect="trtn" then eff="Treatment";
+	else if effect="VISITDY" then eff="Time";
+	else if effect="trtn*VISITDY" then eff="Treatment*Time";
+	else if effect="SIDE" then eff="Side";
+  *pvalue=put(probf, pvalue7.4);
+run;
+%mend;
