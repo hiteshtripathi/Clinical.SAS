@@ -1,5 +1,3 @@
-
-
 /***** create datasets *****/
 %macro datasets_MixedRawNoSide(ds=, evtest=, site=, grp=, order=);
 data &ds;
