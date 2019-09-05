@@ -1,0 +1,206 @@
+/*** clear work library ***/
+proc datasets lib=work memtype=data kill; quit;
+
+/*** set datapath, outputpath and project***/
+%let datapath=%str(G:\Scientific Computing\12 - Advanced Research\MIKA\data);
+%let outputpath=%str(G:\Scientific Computing\12 - Advanced Research\MIKA\Outputs);
+%let project=MIKA;
+libname &project "&datapath";
+
+
+proc import datafile="&datapath\Questions_MIKA.xlsx" dbms=xlsx out=QD0 replace;
+  sheet="questionnair D0";
+  getnames=yes;
+run;
+
+proc import datafile="&datapath\Questions_MIKA.xlsx" dbms=xlsx out=QD28 replace;
+  sheet="Questionnair D28";
+  getnames=yes;
+run;
+
+proc import datafile="&datapath\Questions_MIKA.xlsx" dbms=xlsx out=QD56 replace;
+  sheet="Questionnair D56";
+  getnames=yes;
+run;
+
+proc import file="&datapath\Rando_1531.xlsx" dbms=xlsx out=demo replace;
+  getnames=yes;
+  sheet="Feuil1";
+run;
+
+data QD0; set QD0; visitdy=0; run;
+data QD28; set QD28; visitdy=28; run;
+data QD56; set QD56; visitdy=56; run;
+
+data QA(drop=time);
+  set QD0 QD28 QD56;
+run;
+
+proc sql;
+  create table QA_all as
+  select * from QA
+  left join demo
+  on QA.rd=demo.rd
+  ;
+quit;
+
+proc format;
+  value timenum 0="Day 0"
+                28="Day 28"
+				56="Day 56"
+				;
+  invalue $score "NONE"=0
+               "NOT SATISFIED"=0
+               "MILD"=1
+			   "MILD IMPROVEMENT"=1
+			   "SOMEWHAT SATISFIED"=1
+			   "MODERATE"=2
+			   "MODERATE IMPROVEMENT"=2
+			   "MODERATELY SATISFIED"=2
+			   "SEVERE"=3
+			   "STRONG IMPROVEMENT"=3
+			   "VERY SATISFIED"=3
+			  ;
+run;
+
+
+%macro cmh(ds=, var=, group=, Q=);
+proc freq data=qa_all;
+  where &var not in ("", "WD");
+  format visitdy timenum.;
+  tables visitdy*treatment*&var / cmh out=&ds outpct;
+  ods output CMH=CMH_&ds;
+run;
+ods output close;
+
+data _null_;
+  set cmh_&ds;
+  if statistic=3 then call symput("p_&ds", Prob);
+run;
+
+data &ds;
+  length Q $200 value $20;
+  set &ds;
+  Q="&Q";
+  value=strip(put(count, 3.0))||" ("||strip(put(pct_row, 5.2))||"%)";
+  order=input(&var, $score.);
+run;
+
+proc sort data=&ds;
+  by Q visitdy order &var;
+run;
+
+proc transpose data=&ds out=des_&ds;
+  by Q visitdy order &var;
+  id treatment;
+  var value;
+run;
+
+data des_&ds;
+  length answer $100;
+  set des_&ds;
+  if A="" then A="0 (0.00%)";
+  if B="" then B="0 (0.00%)";
+  if C="" then C="0 (0.00%)";
+  answer=&var;
+  drop _name_ &var;
+run;
+
+data p_&ds;
+  length answer $100 Q $200 visitdy 8. order $20;
+  format visitdy timenum.;
+  Q="&Q";
+  visitdy=.; order=""; A=""; B=""; C="";
+  answer="";
+  pvalue=&&p_&ds;
+run;
+
+proc sql;
+  create table table_&ds as
+  select * from des_&ds
+  union
+  select *  from p_&ds
+  ;
+quit;
+
+data table_&ds; set table_&ds; group=&group; run;
+%mend;
+
+
+%cmh(ds=q1, var=Have_you_seen_an_improvement_in, group=1,
+       Q=%str(Have you seen an improvement in the acne severity on your face with the product use?));
+%cmh(ds=q2, var=Have_you_seen_an_improvement_in1, group=2,
+       Q=%str(Have you seen an improvement in acne pain/soreness iwht the product use?));
+%cmh(ds=q3, var=___Have_you_seen_an_improvement, group=3,
+       Q=%str(Have you seen an improvement with the redness associated with your acne after using the product?));
+%cmh(ds=q4, var=___Have_you_seen_an_improvement1, group=4,
+       Q=%str(Have you seen an improvement in skin clearness/clarity with the product use?));
+%cmh(ds=q5, var=__Have_you_seen_an_improvement_i, group=5,
+       Q=%str(Have you seen an improvement in skin smoothness with the product use?));
+%cmh(ds=q6, var=_Please_rate_the_feel_of_product, group=6,
+       Q=%str(Please rate the feel of product on your skin after application-oily));
+%cmh(ds=q7, var=__Please_rate_the_dryness_feelng, group=7,
+       Q=%str(Please rate the dryness feeling of your skin after product use));
+%cmh(ds=q8, var=_Please_rate_the_dryness_look_of, group=8,
+       Q=%str(Please rate the dryness look of your skin after product use));
+%cmh(ds=q9, var=_Please_rate_how_satisfied_are_y, group=9,
+       Q=%str(Please rate how satisfied are you with the product));
+
+
+proc sql;
+  create table table_all as
+  select * from table_q1 union
+  select * from table_q2 union
+  select * from table_q3 union
+  select * from table_q4 union
+  select * from table_q5 union
+  select * from table_q5 union
+  select * from table_q6 union
+  select * from table_q7 union
+  select * from table_q8 union
+  select * from table_q9
+  ;
+quit;
+
+proc sort data=table_all;
+  by group q visitdy order;
+run;
+
+
+proc format;
+ 
+  value pcolor 0.1 - high = "Red"
+               0.05 -< 0.1 = "Yellow"
+			   low -< 0.05 = "Green"
+			   ;
+  value effcolor -0.5 - 0.5 = "Red"
+                 0.5 <- 0.8 = "Orange"
+				 -0.8 -< -0.5 = "Orange"
+				 0.8 <- 1.5 = "Yellow"
+				 -1.5 -< -0.8 = "Yellow"
+				 1.5 <- 2 = "Lightgreen"
+				 -2 -< -1.5 = "Lightgreen"
+				 2 <- high = "Green"
+				 low -< -2 = "Green"
+                 ;
+run;
+
+ods rtf file="&outputpath\MIKA_QA_21AUG2019.rtf";
+proc report data=table_all missing split="|";
+  format visitdy timenum. pvalue pvalue7.4;
+  columns group Q visitdy answer C B A pvalue;
+  define group / order noprint;
+  define Q / group "Question" style(column)=[just=left width=180] style(header)=[vjust=center] flow;
+  define visitdy / group "Time" style(column)=[just=center] style(header)=[vjust=center];
+  define answer / display "Score" style(column)=[just=center] style(header)=[vjust=center];
+  define A / display "GLADSKIN" style(column)=[just=center] style(header)=[vjust=center];
+  define B / display "Effaclar Duo+" style(column)=[just=center] style(header)=[vjust=center];
+  define C / display "Benzoyl Peroxide 5%" style(column)=[just=center] style(header)=[vjust=center];
+  define pvalue / display "P-Value*" style={background=pcolor. just=center vjust=center};
+  compute after Q;
+    line "";
+	endcomp;
+footnote j=l "Cochran-Mantel-Haenszel Statistics (Chi-square test stratified on time)";
+run;
+footnote;
+ods rtf close;
