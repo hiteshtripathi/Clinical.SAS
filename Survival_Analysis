@@ -1,0 +1,674 @@
+/*** clear work library ***/
+proc datasets lib=work memtype=data kill; run;
+
+/*** set datapath, outputpath and project***/
+%let datapath=%str(G:\Scientific Computing\12 - Advanced Research\MILO Acne - Jyotsna\data\DBlocked (avant mapping));
+%let outputpath=%str(G:\Scientific Computing\12 - Advanced Research\MILO Acne - Jyotsna\output);
+%let project=milo;
+libname &project "&datapath";
+
+/*** import format if any ***/
+proc format cntlin=&project..formats;
+run;
+
+proc format;
+  invalue trtn "Formulation X"=1
+               "Formulation Y"=2
+			 ;
+run;
+
+/*** set the treatment macro variables ***/
+%let control=%str(FM081701-Placebo);
+%let active=%str(FM081702-Staphefekt);
+%let trtC=2.Formulation X;
+%let trtA=1.Formulation Y;
+%let BaseTime=0;
+
+
+ods graphics / noborder;
+
+
+/*** create adeff ***/
+data temp;
+  set &project..eval;
+run;
+
+data rand;
+  set &project..dbext_rd;
+run;
+
+proc sort data=temp;
+  by randoid visitdy tpt tptref;
+run;
+
+proc sort data=rand nodupkey;
+  by randoid;
+run;
+
+data temp1;
+  merge temp rand;
+  by randoid;
+run;
+
+proc freq data=temp1;
+  tables evtest;
+run;
+
+data adeff;
+  set temp1(rename=(rdstresc=trt));
+  if evtest="Number of inflammatory lesions";
+  if randoid not in (9, 24, 54);
+  label trt="Treatment";
+  drop rdtest rdsource;
+run;
+
+proc sort data=adeff;
+  by randoid visitdy;
+run;
+
+data adeff;
+  set adeff;
+  by randoid visitdy;
+  if first.randoid then base=.;
+  retain base;
+  if visitdy=0 then base=evstresn;
+  chg=evstresn-base;
+run;
+
+
+
+/**********************************************************************************************/
+/************************************* moderate effect ******************************************/
+/**********************************************************************************************/
+data surv_temp_mod;
+  set adeff;
+  by randoid;
+  if chg < -5 then cnsr=0;
+    else cnsr=1;
+  do i =1 to 70 by 1;
+    if randoid=i and chg < -5 then output;
+	else if randoid=i and last.randoid then output;
+	end;
+  keep randoid trt chg visitdy cnsr;
+run;
+
+data surv_inf_lesion_mod;
+  set surv_temp_mod;
+  by randoid;
+  if first.randoid;
+run;
+
+/*********** K-M Plot **************/
+proc sort data=surv_inf_lesion_mod;
+  by trt visitdy;
+run;
+
+data max_aval;
+  set surv_inf_lesion_mod;
+  by trt visitdy;
+  if last.trt then do;
+    name="max_x"||trt;
+	max_x=visitdy;
+	output;
+	end;
+  call symput("max_x", max(max_x));
+  call symput("axis_by", 7);
+run;
+
+data _null_;
+  length timelist $200;
+  timelist="0";
+  do i = 7 to &max_x by 7;
+    timelist=catx(" ", timelist, put(i, 3.));
+	end;
+  call symput("timelist", timelist);
+run;
+
+proc lifetest data=surv_inf_lesion_mod timelist=&timelist outsurv=curve method=km;
+  time visitdy*cnsr(1);
+  strata trt;
+ ods output ProductLimitEstimates=atrisk;
+ ods output CensoredSummary=censorinfo;
+ ods output Quartiles=median(where=(percent=50));
+ ods output homtests=pvalue(where=(test="Log-Rank"));
+run;
+ods output close;
+
+proc phreg data=surv_inf_lesion_mod;
+  class trt(ref="Formulation X");
+  model visitdy*cnsr(1)=trt / risklimits;
+ods output ParameterEstimates=hratio;
+run;
+ods output close;
+
+
+data censortime;
+  length text $200;
+  set censorinfo;
+  if trt eq "" then text="Censoring Times";
+  else text=catx(" ", trt, " ( n/N =", censored, "/", total, ")");
+  keep trt text;
+run;
+
+proc sort data=hratio;
+  by descending ClassVal0;
+run;
+
+data hr;
+  set hratio;
+  length text $200;
+  text=catx(" ", ClassVal0, "Hazard Ratio [95% CI] =", put(hazardratio, 6.3), "[", put(HRLowerCL, 6.3), ",", put(HRUpperCL, 6.3), "]");
+  output;
+run;
+
+data md;
+  length text $200;
+  set median;
+  est=put(estimate, 5.2);
+  ll=put(lowerlimit, 6.2);
+  ul=put(upperlimit, 6.2);
+  text=catx(" ", trt, ":", coalescec(est, "NA"), "[", coalescec(ll, "NA"), ",", coalescec(ul, "NA"), "]");
+run;
+
+data logrank;
+  length text $200;
+  set pvalue;
+  text=catx(" ", test, "P-Value =", put(probchisq, pvalue6.4));
+run;
+
+data censordot;
+  set curve;
+  x=visitdy;
+  if survival ne . then y=1-survival;
+  retain y;
+  if _censor_=1;
+run;
+
+/***/
+data anno;
+  length function $8 text $200 color $20;
+  set censortime(in=one) hr(in=two) md(in=three) end=eof logrank(in=four) censordot(in=five);
+  if one then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1.5; x=10; color="black";
+	if trt="" then do;
+	  function="label"; y=100-5+2; position="6"; output; 
+    end;
+	if trt ne "" then do;
+	  function="label"; y=100-5-input(trt, trtn.)*3+2; x=10+2; position="6"; output;
+	  function="symbol"; y=100-5+2; x=10-input(trt, trtn.)*1.5; position="2";
+	    if trt="Formulation X" then do;
+          text="circle"; color="orange"; 
+		end;
+		else if trt="Formulation Y" then do;
+          text="triangle"; color="blue";
+		end;
+		output;
+	  function="symbol"; y=100-5-input(trt, trtn.)*3+2; x=10-2; position="2";
+	    if trt="Formulation X" then do;
+          text="circle"; color="orange";
+		end;
+		else if trt="Formulation Y" then do;
+          text="triangle"; color="blue";
+		end;
+		output;
+	  function="move"; y=100-5-1; x=10-5; line=4-1; position="2"; color="orange"; output;
+	  function="draw"; x=10+1; position="2"; output;
+      function="move"; y=100-5-4; x=10-5; line=4-2; position="2"; color="blue"; output;
+	  function="draw"; x=10+1; position="2"; output;
+	end;
+  end;
+
+  if two then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-5-_n_*3; output;
+  end;
+
+  if three then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-18-3-input(trt, trtn.)*3; output;
+  end;
+  if eof then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-18-3; text="Kaplan-Meier medians [95% CI]"; output;
+  end;
+
+  if four then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-28-3; output;
+  end;
+
+  if five then do;
+    xsys="2"; ysys="2"; position="3"; angle=0; size=1.5;
+	function="symbol";
+	  if trt="Formulation X" then do;
+        text="circle";
+		color="orange";
+		end;
+	  else if trt="Formulation Y" then do;
+        text="triangle";
+		color="blue";
+		end;
+	  output;
+  end;
+
+  if function ne "";
+
+  keep function text x y xsys ysys position angle size line color trt;
+run;
+
+
+ 
+data anno2;
+  length function $8 text $200;
+  set atrisk(where=(timelist in (0, 28, 56)));
+  xsys="3"; ysys="3"; position="6"; angle=0; size=1.2; line=1; color="black";
+  function="label"; x=5; y=12; text="Change from Baseline < -5 lesions"; output;
+  x=5; y=10; text="Time"; position="6"; output;
+  x=5; y=10-input(trt, trtn.)*2; text=trt; position="6"; output;
+  x=15+timelist*1.36; y=10; text=put(timelist, 3.); output;
+  x=15+timelist*1.36; y=10-input(trt, trtn.)*2; text=put(failed, 3.); output;
+  keep function text x y xsys ysys position angle size line color trt;
+run;
+
+proc append base=anno data=anno2;
+run;
+
+/***/
+options orientation=landscape papersize="ISO A4" nodate nonumber nobyline;
+goptions hsize=25cm vsize=17cm xmax=25cm horigin=1.3cm vorigin=1.3cm gunit=pct htext=2;
+
+axis1 label=(height=2 justify=center "Time (Days)") offset=(2, 2) minor=none order=(0 to 56 by 7) value=(height=2 ) length=80;
+axis2 label=(height=2 angle=90 rotate=0 "1 - survival probability (%)") offset=(2, 2) major=(height=1 width=2) minor=none order=(0 to 1 by 0.2)
+      value=(height=2 "0%" "20%" "40%" "60%" "80%" "100%") length=60;
+
+title1 j=l height=2 "MILO Data Survial Test";
+title2 j=c height=3 "Kaplan-Meier curve for survival in the per protocol population";
+title3 "Event: number of inflammatory lesion descrease > 5";
+footnote1 j=l move=(0 ,0) "Log-rank test and Cox regression model";
+
+symbol1 interpol=steplj height=1 width=1.5 line=3 color=orange value=none;
+symbol2 interpol=steplj height=1 width=1.5 line=2 color=blue value=none;
+
+data curve;
+  set atrisk;
+  if survival ne . then prob=1-survival;
+  retain prob;
+run;
+
+
+ods rtf file="&outputpath\Survival\KM_infLesion_mod_03May2019.rtf";
+proc gplot data=curve annotate=anno;
+  format timelist 3.0;
+  plot prob*timelist=trt / haxis=axis1 vaxis=axis2 nolegend;
+run;
+quit;
+title;
+footnote;
+ods rtf close;
+
+
+/*********** Forest Plot ***************/
+data rand;
+  set &project..dm;
+  keep randoid sex;
+run;
+
+proc sort data=adeff; by randoid; run;
+proc sort data=rand; by randoid; run;
+
+data adeff1;
+  merge adeff rand;
+  by randoid;
+  if randoid not in (9, 24, 54);
+run;
+
+proc sort data=adeff1;
+  by randoid visitdy trt;
+run;
+
+
+data surv_temp1_mod;
+  set adeff1;
+  by randoid visitdy trt;
+  if chg < -5 then cnsr=0;
+    else cnsr=1;
+  do i = 1 to 70 by 1;
+    if randoid=i and chg < -5 then output;
+	else if randoid=i and last.randoid then output;
+	end;
+  keep randoid trt chg visitdy cnsr sex;
+run;
+
+data surv_inf_lesion1_mod;
+  set surv_temp1_mod;
+  by randoid;
+  if first.randoid;
+run;
+
+proc sort data=surv_inf_lesion1_mod;
+  by sex;
+run;
+
+proc phreg data=surv_inf_lesion1_mod;
+  by sex;
+  class trt(ref="Formulation X");
+  model visitdy*cnsr(1)=trt / risklimits;
+  ods output ParameterEstimates=hratio1;
+run;
+ods output close;
+
+data hratio_all;
+  length sexc $10;
+  set hratio;
+  sexc="All";
+run;
+
+data hratio2;
+  length sexc $10;
+  set hratio1;
+  sexc=put(sex, sex.);
+run;
+
+proc append base=hratio_all data=hratio2 force;
+run;
+
+ods rtf file="&outputpath\Survival\Forest_infLesion_mod_03May2019.rtf";
+proc sgplot data=hratio_all noautolegend;
+  scatter y=sexc x=hazardratio / xerrorupper=HRUpperCL xerrorlower=HRLowerCL errorbarattrs=(thickness=2.5 color=black) markerattrs=(size=8 color=black symbol=circlefilled);
+  refline 1 / axis=x lineattrs=(pattern=2);
+  yaxis type=discrete discreteorder=formatted display=(noticks nolabel) values=("  " "Male" "Female" "  " "  " "All") valueattrs=(size=11);
+  xaxis type=log logbase=2 values=(0.125 0.25 0.5 1 2 4 8) valueattrs=(size=11);
+title1 "Hazard Ratios for Clincial Success";
+title2 "Event: number of inflammatory lesion descrease > 5";
+run;
+title;
+ods rtf close;
+
+
+/**********************************************************************************************/
+/************************************* strong effect ******************************************/
+/**********************************************************************************************/
+data surv_temp_str;
+  set adeff;
+  by randoid;
+  if chg < -10 then cnsr=0;
+    else cnsr=1;
+  do i =1 to 70 by 1;
+    if randoid=i and chg < -10 then output;
+	else if randoid=i and last.randoid then output;
+	end;
+  keep randoid trt chg visitdy cnsr;
+run;
+
+data surv_inf_lesion_str;
+  set surv_temp_str;
+  by randoid;
+  if first.randoid;
+run;
+
+/*********** K-M Plot **************/
+proc sort data=surv_inf_lesion_str;
+  by trt visitdy;
+run;
+
+data max_aval;
+  set surv_inf_lesion_mod;
+  by trt visitdy;
+  if last.trt then do;
+    name="max_x"||trt;
+	max_x=visitdy;
+	output;
+	end;
+  call symput("max_x", max(max_x));
+  call symput("axis_by", 7);
+run;
+
+data _null_;
+  length timelist $200;
+  timelist="0";
+  do i = 7 to &max_x by 7;
+    timelist=catx(" ", timelist, put(i, 3.));
+	end;
+  call symput("timelist", timelist);
+run;
+
+proc lifetest data=surv_inf_lesion_str timelist=&timelist outsurv=curve method=km;
+  time visitdy*cnsr(1);
+  strata trt;
+ ods output ProductLimitEstimates=atrisk;
+ ods output CensoredSummary=censorinfo;
+ ods output Quartiles=median(where=(percent=50));
+ ods output homtests=pvalue(where=(test="Log-Rank"));
+run;
+ods output close;
+
+proc phreg data=surv_inf_lesion_str;
+  class trt(ref="Formulation X");
+  model visitdy*cnsr(1)=trt / risklimits;
+ods output ParameterEstimates=hratio;
+run;
+ods output close;
+
+
+data censortime;
+  length text $200;
+  set censorinfo;
+  if trt eq "" then text="Censoring Times";
+  else text=catx(" ", trt, " ( n/N =", censored, "/", total, ")");
+  keep trt text;
+run;
+
+proc sort data=hratio;
+  by descending ClassVal0;
+run;
+
+data hr;
+  set hratio;
+  length text $200;
+  text=catx(" ", ClassVal0, "Hazard Ratio [95% CI] =", put(hazardratio, 6.3), "[", put(HRLowerCL, 6.3), ",", put(HRUpperCL, 6.3), "]");
+  output;
+run;
+
+data md;
+  length text $200;
+  set median;
+  est=put(estimate, 5.2);
+  ll=put(lowerlimit, 6.2);
+  ul=put(upperlimit, 6.2);
+  text=catx(" ", trt, ":", coalescec(est, "NA"), "[", coalescec(ll, "NA"), ",", coalescec(ul, "NA"), "]");
+run;
+
+data logrank;
+  length text $200;
+  set pvalue;
+  text=catx(" ", test, "P-Value =", put(probchisq, pvalue6.4));
+run;
+
+data censordot;
+  set curve;
+  x=visitdy;
+  if survival ne . then y=1-survival;
+  retain y;
+  if _censor_=1;
+run;
+
+/***/
+data anno;
+  length function $8 text $200 color $20;
+  set censortime(in=one) hr(in=two) md(in=three) end=eof logrank(in=four) censordot(in=five);
+  if one then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1.5; x=10; color="black";
+	if trt="" then do;
+	  function="label"; y=100-5+2; position="6"; output; 
+    end;
+	if trt ne "" then do;
+	  function="label"; y=100-5-input(trt, trtn.)*3+2; x=10+2; position="6"; output;
+	  function="symbol"; y=100-5+2; x=10-input(trt, trtn.)*1.5; position="2";
+	    if trt="Formulation X" then do;
+          text="circle"; color="orange"; 
+		end;
+		else if trt="Formulation Y" then do;
+          text="triangle"; color="blue";
+		end;
+		output;
+	  function="symbol"; y=100-5-input(trt, trtn.)*3+2; x=10-2; position="2";
+	    if trt="Formulation X" then do;
+          text="circle"; color="orange";
+		end;
+		else if trt="Formulation Y" then do;
+          text="triangle"; color="blue";
+		end;
+		output;
+	  function="move"; y=100-5-1; x=10-5; line=4-1; position="2"; color="orange"; output;
+	  function="draw"; x=10+1; position="2"; output;
+      function="move"; y=100-5-4; x=10-5; line=4-2; position="2"; color="blue"; output;
+	  function="draw"; x=10+1; position="2"; output;
+	end;
+  end;
+
+  if two then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-5-_n_*3; output;
+  end;
+
+  if three then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-18-3-input(trt, trtn.)*3; output;
+  end;
+  if eof then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-18-3; text="Kaplan-Meier medians [95% CI]"; output;
+  end;
+
+  if four then do;
+    xsys="1"; ysys="1"; position="3"; angle=0; size=1; line=1; x=10;
+	function="label"; y=100-28-3; output;
+  end;
+
+  if five then do;
+    xsys="2"; ysys="2"; position="3"; angle=0; size=1.5;
+	function="symbol";
+	  if trt="Formulation X" then do;
+        text="circle";
+		color="orange";
+		end;
+	  else if trt="Formulation Y" then do;
+        text="triangle";
+		color="blue";
+		end;
+	  output;
+  end;
+
+  if function ne "";
+
+  keep function text x y xsys ysys position angle size line color trt;
+run;
+
+	 
+data anno2;
+  length function $8 text $200;
+  set atrisk(where=(timelist in (0, 28, 56)));
+  xsys="3"; ysys="3"; position="6"; angle=0; size=1.2; line=1; color="black";
+  function="label"; x=5; y=12; text="Change from Baseline < -5 lesions"; output;
+  x=5; y=10; text="Time"; position="6"; output;
+  x=5; y=10-input(trt, trtn.)*2; text=trt; position="6"; output;
+  x=15+timelist*1.36; y=10; text=put(timelist, 3.); output;
+  x=15+timelist*1.36; y=10-input(trt, trtn.)*2; text=put(failed, 3.); output;
+  keep function text x y xsys ysys position angle size line color trt;
+run;
+
+proc append base=anno data=anno2;
+run;
+
+/***/
+options orientation=landscape papersize="ISO A4" nodate nonumber nobyline;
+goptions hsize=25cm vsize=17cm xmax=25cm horigin=1.3cm vorigin=1.3cm gunit=pct htext=2;
+
+axis1 label=(height=2 justify=center "Time (Days)") offset=(2, 2) minor=none order=(0 to 56 by 7) value=(height=2 ) length=80;
+axis2 label=(height=2 angle=90 rotate=0 "1 - survival probability (%)") offset=(2, 2) major=(height=1 width=2) minor=none order=(0 to 1 by 0.2)
+      value=(height=2 "0%" "20%" "40%" "60%" "80%" "100%") length=60;
+
+title1 j=l height=2 "MILO Data Survial Test";
+title2 j=c height=3 "Kaplan-Meier curve for survival in the per protocol population";
+title3 j=c  "Event: number of inflammatory lesion descrease > 10";
+footnote1 j=l move=(0 ,0) "Log-rank test and Cox regression model";
+
+symbol1 interpol=steplj height=1 width=1.5 line=3 color=orange value=none;
+symbol2 interpol=steplj height=1 width=1.5 line=2 color=blue value=none;
+
+data curve;
+  set atrisk;
+  if survival ne . then prob=1-survival;
+  retain prob;
+run;
+
+
+ods rtf file="&outputpath\Survival\KM_infLesion_str_03May2019.rtf";
+proc gplot data=curve annotate=anno;
+  format timelist 3.0;
+  plot prob*timelist=trt / haxis=axis1 vaxis=axis2 nolegend;
+run;
+quit;
+title;
+footnote;
+ods rtf close;
+
+
+/*********** Forest Plot ***************/
+data surv_temp1_str;
+  set adeff1;
+  by randoid visitdy trt;
+  if chg < -10 then cnsr=0;
+    else cnsr=1;
+  do i = 1 to 70 by 1;
+    if randoid=i and chg < -10 then output;
+	else if randoid=i and last.randoid then output;
+	end;
+  keep randoid trt chg visitdy cnsr sex;
+run;
+
+data surv_inf_lesion1_str;
+  set surv_temp1_str;
+  by randoid;
+  if first.randoid;
+run;
+
+proc sort data=surv_inf_lesion1_str;
+  by sex;
+run;
+
+proc phreg data=surv_inf_lesion1_str;
+  by sex;
+  class trt(ref="Formulation X");
+  model visitdy*cnsr(1)=trt / risklimits;
+  ods output ParameterEstimates=hratio1;
+run;
+ods output close;
+
+data hratio_all;
+  length sexc $10;
+  set hratio;
+  sexc="All";
+run;
+
+data hratio2;
+  length sexc $10;
+  set hratio1;
+  sexc=put(sex, sex.);
+run;
+
+proc append base=hratio_all data=hratio2 force;
+run;
+
+ods rtf file="&outputpath\Survival\Forest_infLesion_str_03May2019.rtf";
+proc sgplot data=hratio_all noautolegend;
+  scatter y=sexc x=hazardratio / xerrorupper=HRUpperCL xerrorlower=HRLowerCL errorbarattrs=(thickness=2.5 color=black) markerattrs=(size=8 color=black symbol=circlefilled);
+  refline 1 / axis=x lineattrs=(pattern=2);
+  yaxis type=discrete discreteorder=formatted display=(noticks nolabel) values=("  " "Male" "Female" "  " "  " "All") valueattrs=(size=11);
+  xaxis type=log logbase=2 valueattrs=(size=11);
+title1 "Hazard Ratios for Clincial Success";
+title2 "Event: number of inflammatory lesion descrease > 10";
+run;
+title;
+ods rtf close;
+
