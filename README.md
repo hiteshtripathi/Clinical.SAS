@@ -15,7 +15,7 @@ run;
 
 
 ## Example for using format picture:
-Put numbers into percent format (e.g., 96.789 to 96.79%)
+Put numbers into percent format (e.g., 96.789 to 96.78%)
 proc format;
   picture pctfmt low-high='00.99%' (mult=1000);
 run;
