@@ -12,3 +12,10 @@ repeated / type=cs sub=person group=sex r=1,12;
 estimate 'diff in ints' sex 1 -1;
 estimate 'diff in slopes' age1(sex) 1 -1;
 run;
+
+
+## Example for using format picture:
+Put numbers into percent format (e.g., 96.789 to 96.79%)
+proc format;
+  picture pctfmt low-high='00.99%' (mult=1000);
+run;
