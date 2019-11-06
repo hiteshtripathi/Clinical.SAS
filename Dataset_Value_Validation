@@ -1,0 +1,250 @@
+/*** check Global sum of the number of lesions each site ***/
+data sum_each_site;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Cheek ",
+              "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Cheek ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Cheek ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Cheek ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Chin ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Face ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Forehead ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Nose "
+              );
+  keep randoid visitdy evtest evstresn site;
+  if randoid ne .;
+run;
+
+proc sort data=sum_each_site;
+  by randoid visitdy site;
+run;
+
+proc transpose data=sum_each_site out=sum_each_site1;
+  by randoid visitdy site;
+  id evtest;
+  var evstresn;
+run;
+
+data sum_each_site1;
+  set sum_each_site1;
+  total=Number_of_Black_spots+Number_of_Microcysts+Number_of_Papules+Number_of_Pustules;
+  keep randoid visitdy total site;
+run;
+
+data sum_each_site_v;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Cheek ",
+              "Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Chin ",
+              "Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Face ",
+              "Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Forehead ",
+              "Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Nose ");
+  keep randoid visitdy evstresn site;
+  rename evstresn=total;
+  if randoid ne .;
+run;
+
+proc sort data=sum_each_site_v;
+  by randoid visitdy site;
+run;
+
+proc compare data=sum_each_site1 compare=sum_each_site_v;
+run;
+
+
+
+/*** check Global sum of the number of lesions all sites ***/
+data sum_all_site;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Cheek ",
+              "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Cheek ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Nodules-site: Cheek ";
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Cheek ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Cheek ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Nodules-site: Chin ";
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Chin ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Chin ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Nodules-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Face ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Nodules-site: Forehead ";
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Forehead ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Forehead ",
+              "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Nodules-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Nose ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Nose "
+              );
+  keep randoid visitdy evtest evstresn site;
+  if randoid ne .;
+run;
+
+proc sort data=sum_all_site;
+  by randoid visitdy evtest;
+run;
+
+proc transpose data=sum_all_site out=sum_all_site1;
+  by randoid visitdy evtest;
+  id site;
+  var evstresn;
+run;
+
+data sum_all_site_check;
+  set sum_all_site1;
+  total=cheek+chin+forehead+nose;
+  diff=total-face;
+  if diff ne 0 then put "WARNING";
+run;
+
+proc freq data=sum_all_site_check;
+  tables diff;
+run;
+
+
+/*** total number of inflammatory lesions ***/
+data num_inflam;
+  set adeff1;
+  if test in (
+			  "Clinical assessment-Visual assessment in vivo-Number of Papules-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Pustules-site: Face "
+              );
+  keep randoid visitdy evtest evstresn site;
+  if randoid ne .;
+run;
+
+
+proc sort data=num_inflam;
+  by randoid visitdy;
+run;
+
+proc transpose data=num_inflam out=num_inflam1;
+  by randoid visitdy;
+  id evtest;
+  var evstresn;
+run;
+
+data num_inflam1;
+  set num_inflam1;
+  total=Number_of_Papules+Number_of_Pustules;
+  keep randoid visitdy total;
+run;
+
+data num_inflam_v;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Number of inflammatory lesions-site: Face ");
+  keep randoid visitdy evstresn;
+  rename evstresn=total;
+  if randoid ne .;
+run;
+
+proc sort data=num_inflam_v;
+  by randoid visitdy;
+run;
+
+proc compare data=num_inflam1 compare=num_inflam_v;
+run;
+
+
+
+/*** total number of non-inflammatory lesions ***/
+data num_noninflam;
+  set adeff1;
+  if test in (
+			  "Clinical assessment-Visual assessment in vivo-Number of Black spots-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of Microcysts-site: Face "
+              );
+  keep randoid visitdy evtest evstresn site;
+  if randoid ne .;
+run;
+
+
+proc sort data=num_noninflam;
+  by randoid visitdy;
+run;
+
+proc transpose data=num_noninflam out=num_noninflam1;
+  by randoid visitdy;
+  id evtest;
+  var evstresn;
+run;
+
+data num_noninflam1;
+  set num_noninflam1;
+  total=Number_of_Black_spots+Number_of_Microcysts;
+  keep randoid visitdy total;
+run;
+
+data num_noninflam_v;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Number of non-inflammatory lesions-site: Face ");
+  keep randoid visitdy evstresn;
+  rename evstresn=total;
+  if randoid ne .;
+run;
+
+proc sort data=num_noninflam_v;
+  by randoid visitdy;
+run;
+
+proc compare data=num_noninflam1 compare=num_noninflam_v;
+run;
+
+
+/*** total number of lesions ***/
+data total_lesion;
+  set adeff1;
+  if test in (
+			  "Clinical assessment-Visual assessment in vivo-Number of inflammatory lesions-site: Face ",
+			  "Clinical assessment-Visual assessment in vivo-Number of non-inflammatory lesions-site: Face "
+              );
+  keep randoid visitdy evtest evstresn site;
+  if randoid ne .;
+run;
+
+proc sort data=total_lesion;
+  by randoid visitdy;
+run;
+
+proc transpose data=total_lesion out=total_lesion1;
+  by randoid visitdy;
+  id evtest;
+  var evstresn;
+run;
+
+data total_lesion1;
+  set total_lesion1;
+  total=Number_of_inflammatory_lesions+Number_of_non_inflammatory_lesio;
+  keep randoid visitdy total;
+run;
+
+data total_lesion_v;
+  set adeff1;
+  if test in ("Clinical assessment-Visual assessment in vivo-Total number of lesions-site: Face ");
+  keep randoid visitdy evstresn;
+  rename evstresn=total;
+  if randoid ne .;
+run;
+
+proc sort data=total_lesion_v;
+  by randoid visitdy;
+run;
+
+proc compare data=total_lesion1 compare=total_lesion_v;
+run;
