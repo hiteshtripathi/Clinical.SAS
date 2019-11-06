@@ -14,6 +14,20 @@ estimate 'diff in slopes' age1(sex) 1 -1;
 run;
 
 
+## about DDFM= option
+
+ddfm=kenwardroger or ddfm=kr denotes a denominator degree of freedom approximation method developed by Kenward-Roger.
+This method provides Satterthwaite-type d.f. for unbalanced longitudinal data, or when TYPE=UN option is used.
+DDFM=SATTERTH and DDFM=KR provide d.f. with decimals.
+
+DDFM=RESIDUAL, DDFM=CONTAIN, DDFM=BW (Between-Within) are "exact methods" used in situations where the design is balanced and the variance-covariance structure is simple. 
+When data are unbalanced and/or the model involves complicated covariance structures, the test statistics for fixed-effects floolow unknown distributions, the "approximate" methods such as Satterthwaite's method or Kenward-Roger's method should be used to approximate d.f. for the fixed-effects in a multilevel model.
+
+When different d.f. methods are used, parameter estimates, standard errors, t-ratio and F-value are basically the same, but the denominator d.f. and p-values are different for fixed effects.
+In general, Satterthwaite and Kenward-Roger methods, particularly the latter, are recommended by statisticians. However, both SATTERTH and KR methods are computationally intensive, particularly when the model is complex and sample size is large. In comparison, the option DDFM=BW provides very similar results to DDFM=SATTERTH and DDFM=KR with much less computation time. However, in general, DDFM=KR or DDFM=SATTERTH are perferred d.f. methods for reporting final model results.
+
+
+
 ## Example for using format picture:
 Put numbers into percent format (e.g., 96.789 to 96.78%)
 proc format;
