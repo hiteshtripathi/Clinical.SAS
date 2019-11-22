@@ -14,7 +14,7 @@ estimate 'diff in slopes' age1(sex) 1 -1;
 run;
 
 
-## About DDFM= option
+### About DDFM= option in Proc mixed
 
 ddfm=kenwardroger or ddfm=kr denotes a denominator degree of freedom approximation method developed by Kenward-Roger.
 This method provides Satterthwaite-type d.f. for unbalanced longitudinal data, or when TYPE=UN option is used.
@@ -26,6 +26,8 @@ When data are unbalanced and/or the model involves complicated covariance struct
 When different d.f. methods are used, parameter estimates, standard errors, t-ratio and F-value are basically the same, but the denominator d.f. and p-values are different for fixed effects.
 In general, Satterthwaite and Kenward-Roger methods, particularly the latter, are recommended by statisticians. However, both SATTERTH and KR methods are computationally intensive, particularly when the model is complex and sample size is large. In comparison, the option DDFM=BW provides very similar results to DDFM=SATTERTH and DDFM=KR with much less computation time. However, in general, DDFM=KR or DDFM=SATTERTH are perferred d.f. methods for reporting final model results.
 
+Note: with DDFM=SATTERTHWAITE or DDFM=KENWADROGER or DDFM=KENWADROGER2, unadjusted p-values in tests are based on the degree of freedom specific to that comparison. P-avlues that are adjusted for multiplicity, however, are by default based on the denominator degrees of freedom for the Type 3 test of the fixed effect. If you specify the ADJDFE=ROW option in the LSMEANS statement, the adjusted p-values take into account the row-wise degrees of freedom.
+
 ## About CMH test output
 The choice for the 3 p-values from the output:
 1. General association: When the row and the column variables are both nominal (unordered). The only alternative hypothesis of interest is that there is some association between the row and column variables. Similar to Chi-square test.
@@ -34,8 +36,3 @@ The choice for the 3 p-values from the output:
 
 
 
-## Example for using format picture:
-Put numbers into percent format (e.g., 96.789 to 96.78%)
-proc format;
-  picture pctfmt low-high='00.99%' (mult=1000);
-run;
