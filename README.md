@@ -35,4 +35,7 @@ The choice for the 3 p-values from the output:
 3. Linear association: When both row and column variables are ordinal. We could assign scores to both variables and compute correlation.
 
 
+## Quartiles calculation in SAS
+the QNTLDEF(PCTLDEF) option to set the method used by the SAS procedure to compute quartiles.
+The default method used by SAS, is QNTLDEF=5.
 
