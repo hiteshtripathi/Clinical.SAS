@@ -38,4 +38,4 @@ The choice for the 3 p-values from the output:
 ## Quartiles calculation in SAS
 the QNTLDEF(PCTLDEF) option to set the method used by the SAS procedure to compute quartiles.
 The default method used by SAS, is QNTLDEF=5.
-
+<img src="Capture.PNG" width="300" />
