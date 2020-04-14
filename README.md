@@ -13,6 +13,12 @@ estimate 'diff in ints' sex 1 -1;
 estimate 'diff in slopes' age1(sex) 1 -1;
 run;
 
+### About Residuals
+Internally Studentized: because the true standard deviation of the residuals is not typically known, the estimated standard deviation is used instead. This is an interanlly studentized residual, and it is what you called standardized.
+
+Externally Studentized: the same as the internally studentized residual, except that the estimate of the standard deviation of the residuals is calcuated from a regression leaving out the observation in question.
+
+Pearson: the raw residual divided by the standard deviation of the response variable (the y variable) rather than of the residuals. You don't have this one listed.
 
 ### About DDFM= option in Proc mixed
 
