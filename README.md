@@ -46,3 +46,11 @@ the QNTLDEF(PCTLDEF) option to set the method used by the SAS procedure to compu
 The default method used by SAS, is QNTLDEF=5.
 
  <img src="Capture.PNG" width="600" /> 
+ 
+ 
+ ## Macro in Macro
+ %macro IndPlot_all();
+   %do j=1 %to 20;
+     %IndPlot(&j);
+   %end;
+ %mend;
